@@ -1,359 +1,285 @@
-# CLAUDE.md
-# DevBrowser Pro — Coding Conventions & AI Instructions
+# CLAUDE.md — Coding Standards & Agent Instructions: DBStudio
 
-> This file is read by Claude and other AI assistants working in this repo.
-> It defines the code style, patterns, and hard rules for this specific project.
+> **Every agent MUST read this file completely before writing a single line of code.**
 
 ---
 
-## LANGUAGE & RUNTIME
-
-- **TypeScript everywhere.** No plain JavaScript files except config files.
-- **Strict TypeScript.** `"strict": true` in tsconfig. No `any` types unless
-  explicitly justified with a comment explaining why.
-- **Node.js 20+** for extension host. Target: `"module": "commonjs"` for the
-  extension host (VS Code requirement), `"module": "ESNext"` for webview.
-- **React 18** for the webview UI. Functional components only. No class components.
+## 1. Project Identity
+- **App name:** DBStudio
+- **Flutter SDK:** ≥3.22 | **Dart SDK:** ≥3.4
+- **Platforms:** Windows, macOS, Linux (desktop only — no mobile)
+- **State management:** Riverpod (code-gen only — no `.provider` manually)
+- **Architecture:** Feature-first folders, clean layering (see ARCHITECTURE.md)
 
 ---
 
-## CODE STYLE
+## 2. Non-Negotiable Rules
 
-### Naming Conventions
-```typescript
-// Files: PascalCase for classes, camelCase for modules
-BrowserManager.ts     ✅
-browserManager.ts     ❌ (if it exports a class)
+### 2.1 Never Block the UI Thread
+```dart
+// ❌ WRONG
+final result = driver.executeHeavyQuery();
 
-// Classes: PascalCase
-class TabManager { }  ✅
+// ✅ RIGHT
+final result = await driver.executeQuery(sql);                // async IO
+final layout = await Isolate.run(() => computeForceLayout()); // CPU work
+```
+- DB calls: always `async/await`
+- CPU-heavy work (force layout, export, schema diff): `Isolate.run()`
+- Never use `sleep()` or blocking loops anywhere
 
-// Functions: camelCase
-function navigateTo() { }  ✅
+### 2.2 Virtual Scrolling — Non-Negotiable
+The data grid must NEVER render all rows at once.
+```dart
+// ✅ REQUIRED
+TwoDimensionalScrollView(
+  delegate: TwoDimensionalChildBuilderDelegate(
+    builder: (context, vicinity) => _buildCell(vicinity),
+    maxXIndex: columnCount - 1,
+    maxYIndex: visibleRowCount - 1,  // only loaded window
+  ),
+)
+```
+Page size: 500 rows. Keep 3 pages in memory. Evict on scroll away.
 
-// Constants: SCREAMING_SNAKE_CASE for true constants
-const MAX_TABS = 20;  ✅
-const maxTabs = 20;   ❌
+### 2.3 Stream Results — Never Buffer Full Result Set
+```dart
+// ❌ WRONG
+final allRows = await driver.fetchAll(sql);
 
-// Types and Interfaces: PascalCase, Interfaces prefixed with I
-interface ITab { }   ✅  (or just Tab { } — consistency within file)
-type TabState = { }  ✅
-
-// React components: PascalCase
-function NetworkPanel() { }  ✅
-
-// Zustand stores: camelCase with 'use' prefix
-const useTabStore = create(...)  ✅
+// ✅ RIGHT
+await for (final page in driver.executeQuery(sql)) {
+  gridNotifier.appendPage(page);
+}
 ```
 
-### Imports
-```typescript
-// Order: Node built-ins → VS Code API → third-party → internal
-import * as path from 'path';
-import * as vscode from 'vscode';
-import puppeteer from 'puppeteer-core';
-import { TabManager } from './TabManager';
+### 2.4 No Plaintext Credentials — Ever
+```dart
+// ❌ WRONG
+prefs.setString('password', password);
+File('creds.json').writeAsString(jsonEncode({'pw': password}));
 
-// No default exports from utility/class files. Named exports only.
-export class BrowserManager { }   ✅
-export default BrowserManager;   ❌
+// ✅ RIGHT
+await credentialService.store(connectionId, password);
+// Uses flutter_secure_storage → OS keychain
 ```
 
-### Error Handling
-```typescript
-// ALWAYS handle CDP errors explicitly
-// CDP can throw: TimeoutError, TargetCloseError, ProtocolError
-try {
-  const result = await page.evaluate(() => document.title);
-} catch (err) {
-  if (err instanceof TimeoutError) {
-    // Page took too long — notify webview, continue
-  } else if (err.message.includes('Target closed')) {
-    // Tab was closed while operation in flight — silently ignore
-  } else {
-    // Unexpected error — log and notify webview
-    logger.error('Unexpected CDP error', err);
+### 2.5 No Business Logic in Widgets
+```dart
+// ❌ WRONG — logic in widget
+class DataGridWidget extends StatefulWidget {
+  void _executeQuery() async {
+    final conn = await Postgres.connect(...);
+    // ...
   }
 }
 
-// Never swallow errors silently without at least logging them
-try {
-  doSomething();
-} catch (err) {
-  // ❌ WRONG: empty catch
-}
-
-try {
-  doSomething();
-} catch (err) {
-  logger.warn('doSomething failed', err); // ✅ at minimum, log it
+// ✅ RIGHT — delegate to state/service
+class DataGridWidget extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final results = ref.watch(queryStateProvider(tabId));
+    return results.when(data: ..., loading: ..., error: ...);
+  }
 }
 ```
 
-### Async/Await
-```typescript
-// Always await Promises. Never fire-and-forget unless intentional.
-// If intentional, add a comment:
-void someOperation(); // intentional fire-and-forget: we don't need the result
+### 2.6 Plugin-Based Drivers — Registration Only in main.dart
+```dart
+// ✅ CORRECT — main.dart only
+void main() {
+  DriverRegistry.register(DatabaseType.postgres, PostgresDriver.new);
+  runApp(const ProviderScope(child: DBStudioApp()));
+}
+// Drivers never reference each other
+```
 
-// Never use .then() chains when await is available
-// ❌
-page.goto(url).then(() => { doSomething(); });
+---
+
+## 3. Code Style
+
+### 3.1 File Naming
+- `snake_case.dart` for all files
+- One public class per file (exception: small related classes may share)
+- File name matches primary class name
+
+### 3.2 Class Organization
+```dart
+class MyClass {
+  // 1. Static fields & factory constructors
+  // 2. Instance fields (final first)
+  // 3. Constructor
+  // 4. Lifecycle (initState, dispose)
+  // 5. Public methods
+  // 6. Private methods
+  // 7. build() last (for widgets)
+}
+```
+
+### 3.3 Prefer `const` Everywhere
+```dart
 // ✅
-await page.goto(url);
-doSomething();
+const SizedBox(height: 8)
+const EdgeInsets.all(16)
+const Text('Hello')
 ```
 
----
+### 3.4 Error Handling — Always Typed
+```dart
+// ❌ WRONG
+try { ... } catch (e) { print(e); }
 
-## REACT COMPONENT CONVENTIONS
+// ✅ RIGHT
+try { ... }
+on SocketException catch (e) { throw ConnectionFailedException(e.message); }
+on TimeoutException catch (_) { throw QueryTimeoutException(queryId); }
+on Exception catch (e, st) { logger.e('Unexpected', error: e, stackTrace: st); rethrow; }
+```
 
-```tsx
-// Component file structure:
-// 1. Imports
-// 2. Types/interfaces local to this component
-// 3. Component function
-// 4. Sub-components (if small enough to co-locate)
-// 5. Named exports at bottom
+### 3.5 Logging
+```dart
+// Use the logger package — not print()
+final _log = Logger('ClassName');
+_log.d('Debug message');
+_log.i('Info');
+_log.w('Warning');
+_log.e('Error', error: e, stackTrace: st);
+```
 
-// Props type always explicitly defined
-interface NetworkPanelProps {
-  onRequestSelect: (request: NetworkRequest) => void;
-}
+### 3.6 No Magic Numbers — Use Constants
+```dart
+// ❌ const SizedBox(height: 8) scattered everywhere (ok for spacing)
+// ❌ pageSize = 500 hardcoded in 5 places
 
-// Component: arrow function or named function — be consistent per file
-export function NetworkPanel({ onRequestSelect }: NetworkPanelProps) {
-  // Hooks first
-  const requests = useDevtoolsStore((s) => s.networkRequests);
-  const [filter, setFilter] = useState('');
-
-  // Derived values (no useMemo unless actually needed for performance)
-  const filtered = requests.filter((r) => r.url.includes(filter));
-
-  // Handlers
-  const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFilter(e.target.value);
-  };
-
-  // Render
-  return (
-    <div className="network-panel">
-      {/* ... */}
-    </div>
-  );
+// ✅
+class AppConstants {
+  static const int defaultPageSize = 500;
+  static const int maxMemoryPages = 3;
+  static const Duration queryTimeout = Duration(seconds: 30);
+  static const Duration keepalivePing = Duration(seconds: 30);
 }
 ```
 
 ---
 
-## ZUSTAND STORE CONVENTIONS
+## 4. Riverpod Patterns
 
-```typescript
-// One store file per domain area
-// Store shape: flat where possible
-// Selectors: used in components, never access store.getState() in components
+### 4.1 Always Use Code-Gen
+```dart
+// ✅ REQUIRED
+@riverpod
+class QueryState extends _$QueryState {
+  @override
+  AsyncValue<QueryResult?> build(String tabId) => const AsyncValue.data(null);
 
-interface TabStore {
-  tabs: Tab[];
-  activeTabId: string | null;
-  // Actions co-located with state
-  addTab: (url: string) => void;
-  closeTab: (id: string) => void;
-  setActiveTab: (id: string) => void;
-}
-
-export const useTabStore = create<TabStore>((set, get) => ({
-  tabs: [],
-  activeTabId: null,
-  addTab: (url) => set((state) => ({
-    tabs: [...state.tabs, createTab(url)]
-  })),
-  // ...
-}));
-```
-
----
-
-## MESSAGE PROTOCOL (THE MOST IMPORTANT CONVENTION)
-
-Every message between Extension Host and Webview MUST be defined in
-`src/shared/messages.ts` before use.
-
-```typescript
-// src/shared/messages.ts
-
-// Extension → Webview messages
-export type ExtensionToWebviewMessage =
-  | { type: 'PAGE_LOADED'; payload: { tabId: string; url: string; title: string } }
-  | { type: 'SCREENCAST_FRAME'; payload: { tabId: string; data: string; width: number; height: number } }
-  | { type: 'CONSOLE_MESSAGE'; payload: { tabId: string; level: string; text: string; timestamp: number } }
-  | { type: 'NETWORK_REQUEST'; payload: NetworkRequest }
-  | { type: 'SECURITY_FINDING'; payload: SecurityFinding }
-  | { type: 'NAVIGATION_ERROR'; payload: { tabId: string; error: string } }
-  // ADD NEW TYPES HERE — never use inline string literals
-
-// Webview → Extension messages
-export type WebviewToExtensionMessage =
-  | { type: 'USER_NAVIGATE'; payload: { tabId: string; url: string } }
-  | { type: 'USER_CLICK'; payload: { tabId: string; x: number; y: number } }
-  | { type: 'USER_KEYDOWN'; payload: { tabId: string; key: string; modifiers: string[] } }
-  | { type: 'NEW_TAB'; payload: { url?: string } }
-  | { type: 'CLOSE_TAB'; payload: { tabId: string } }
-  | { type: 'AI_QUERY'; payload: { query: string; context: BrowserContext } }
-  // ADD NEW TYPES HERE
-```
-
-**Rule:** If you find yourself writing a message type as a string literal
-anywhere other than in this file — stop. Add it to this file first.
-
----
-
-## SECURITY RULES (HARD STOPS)
-
-These are not style suggestions. They are hard stops. Violating them will
-cause the PR to be rejected.
-
-```typescript
-// ❌ NEVER: eval() anywhere
-eval(userCode);                     // NEVER
-new Function(userCode)();           // NEVER (same as eval)
-vm.runInThisContext(userCode);       // NEVER (use vm.Script with sandbox)
-
-// ❌ NEVER: unvalidated URLs passed to puppeteer
-await page.goto(userInput);         // NEVER
-// ✅ ALWAYS: validate first
-const safeUrl = validateUrl(userInput); // throws if invalid
-await page.goto(safeUrl);
-
-// ❌ NEVER: hardcoded secrets
-const apiKey = 'sk-abc123';         // NEVER
-
-// ❌ NEVER: active scanner on unauthorized domain
-await activeScanner.scan(anyUrl);  // NEVER without auth check
-// ✅ ALWAYS:
-if (!isAuthorizedTarget(url)) { throw new Error('Not authorized'); }
-await activeScanner.scan(url);
-```
-
----
-
-## LOGGING
-
-Use the project logger, never `console.log` in production paths.
-
-```typescript
-import { logger } from '../utils/logger';
-
-logger.debug('Page navigated', { tabId, url }); // Only in dev builds
-logger.info('Security finding added', { severity, type });
-logger.warn('CDP operation timed out', { operation, timeout });
-logger.error('Chrome process crashed', { exitCode, signal });
-```
-
-The logger writes to VS Code's Output channel "DevBrowser Pro".
-`console.log()` is only acceptable in webview code during development.
-Remove all `console.log` before marking a task as done.
-
----
-
-## TESTING REQUIREMENTS
-
-### Extension Host Tests (Mocha)
-- Every public method on every class needs at least one test
-- CDP calls must be mocked (never make real Chrome calls in unit tests)
-- Use sinon for mocking/stubbing
-
-### Webview Tests (Vitest + React Testing Library)
-- Every React component needs a render test (does it render without crashing)
-- Interactive components need interaction tests
-
-### E2E Tests (Playwright + @vscode/test-electron)
-- Core user flows must have E2E coverage:
-  - Navigate to a URL
-  - Open a new tab
-  - See a console.log in the Console panel
-  - See a network request in the Network panel
-  - Run passive security scan
-
----
-
-## VS CODE EXTENSION SPECIFIC
-
-```typescript
-// Always register disposables on extension context
-context.subscriptions.push(
-  vscode.commands.registerCommand('devbrowser.open', handler)
-);
-// Never register without pushing to subscriptions — memory leak
-
-// Always handle extension deactivation cleanly
-export function deactivate() {
-  // Kill Chrome process
-  // Stop proxy server
-  // Close MCP server
-  // Dispose all subscriptions (done automatically via context.subscriptions)
-}
-
-// Use vscode.workspace.getConfiguration for user settings
-const config = vscode.workspace.getConfiguration('devbrowserPro');
-const homePage = config.get<string>('homePage', 'about:blank');
-// Never read settings from anywhere else
-```
-
----
-
-## PACKAGE.JSON CONTRIBUTION POINTS
-
-The `package.json` is the source of truth for:
-- Commands (`contributes.commands`)
-- Keybindings (`contributes.keybindings`)
-- Settings schema (`contributes.configuration`)
-- Activity Bar sidebar (`contributes.viewsContainers.activitybar`)
-- Views (`contributes.views`)
-
-**Do not add VS Code contributions in TypeScript code.**
-All contributions must be declared in `package.json`.
-TypeScript code only implements the handlers.
-
----
-
-## THE ACTIVITY BAR ICON
-
-```json
-// In package.json — this must always be present
-"contributes": {
-  "viewsContainers": {
-    "activitybar": [
-      {
-        "id": "devbrowser-pro",
-        "title": "DevBrowser Pro",
-        "icon": "media/icons/activity-bar.svg"
-      }
-    ]
-  },
-  "views": {
-    "devbrowser-pro": [
-      {
-        "id": "devbrowser.sidebar",
-        "name": "DevBrowser Pro",
-        "type": "tree"
-      }
-    ]
+  Future<void> execute(String sql) async {
+    state = const AsyncValue.loading();
+    // ...
   }
 }
 ```
 
-The icon file at `media/icons/activity-bar.svg` must exist.
-If it doesn't exist, VS Code will hide the Activity Bar entry silently.
-**Always verify this file exists before running the extension.**
+### 4.2 Family Providers for Per-Tab / Per-Connection State
+```dart
+@riverpod
+class GridState extends _$GridState {
+  @override
+  GridModel build(String tabId) => GridModel.empty();
+}
+// Usage: ref.watch(gridStateProvider('tab-123'))
+```
+
+### 4.3 Avoid ref.read in build() — Use ref.watch
+```dart
+// ❌ ref.read in build causes stale data
+// ✅ ref.watch in build, ref.read only in event handlers
+```
 
 ---
 
-## WHAT TO DO WITH UNCLEAR REQUIREMENTS
+## 5. Performance Mandates
 
-If a task in TASKS.md is ambiguous, do NOT make assumptions.
+| Requirement | Implementation |
+|------------|---------------|
+| 60fps grid scroll | Virtual scroll only, RepaintBoundary per row |
+| <16ms keystroke latency | `re_editor` handles this; don't rebuild parent on keypress |
+| <2s cold start | Lazy-load all drivers, defer metadata fetch |
+| <300MB memory | Evict grid pages, dispose unused connections |
+| ER layout non-blocking | `Isolate.run()` mandatory |
+| Export non-blocking | `Isolate.run()` mandatory |
 
-1. Write what is clear and works.
-2. Add `// UNCLEAR: [describe the ambiguity]` comment at the decision point.
-3. Update TASKS.md with a note: "Needs clarification: [question]"
-4. Stop at that point. Do not proceed past unclear requirements.
+---
+
+## 6. Testing Standards
+
+### Every Service Method Gets a Unit Test
+```dart
+test('executeQuery streams pages', () async {
+  final driver = MockDatabaseDriver();
+  when(() => driver.executeQuery(any())).thenAnswer(
+    (_) => Stream.fromIterable([page1, page2]),
+  );
+  final service = QueryService(driver: driver);
+  final pages = await service.execute('SELECT 1').toList();
+  expect(pages.length, 2);
+});
+```
+
+### Widget Tests Must Not Hit Real DB
+Use `ProviderScope` with overrides:
+```dart
+await tester.pumpWidget(
+  ProviderScope(
+    overrides: [
+      queryStateProvider('tab1').overrideWith(() => FakeQueryState()),
+    ],
+    child: const SQLEditorTab(tabId: 'tab1'),
+  ),
+);
+```
+
+---
+
+## 7. Folder Creation Rule
+If a folder doesn't exist in `lib/`, create `lib/folder/.gitkeep` before adding files. Never create files in the root `lib/` except `main.dart` and `app.dart`.
+
+---
+
+## 8. Import Rules
+```dart
+// Order: dart → flutter → packages → relative (with blank line between groups)
+import 'dart:async';
+import 'dart:isolate';
+
+import 'package:flutter/material.dart';
+
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:postgres/postgres.dart';
+
+import '../models/query_result.dart';
+import 'query_service.dart';
+```
+
+---
+
+## 9. Before Submitting Any File — Checklist
+- [ ] `dart analyze` shows zero errors and zero warnings
+- [ ] `dart format` applied
+- [ ] No `print()` statements — use `logger`
+- [ ] No hardcoded credentials or test passwords
+- [ ] No `TODO` left without a corresponding TASKS.md task ID
+- [ ] All async functions have error handling
+- [ ] New classes/widgets have a one-line dartdoc comment
+- [ ] `build_runner` re-run if any freezed/riverpod file was added or changed
+
+---
+
+## 10. Git Commit Convention
+```
+feat(drivers): add PostgreSQL connection pool
+fix(grid): virtual scroll resets on filter change
+test(services): add export service unit tests
+refactor(state): simplify query notifier lifecycle
+docs: update ARCHITECTURE.md with SSH tunnel flow
+```
+Scope must be one of: `drivers`, `services`, `state`, `grid`, `editor`, `explorer`, `er`, `schema`, `settings`, `layout`, `models`, `storage`, `tests`.

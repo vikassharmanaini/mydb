@@ -1,287 +1,211 @@
-# TASKS.md
-# DevBrowser Pro — Task Board
+# TASKS.md — Development Task Breakdown: DBStudio
 
-> AI agents: pick ONE task at a time. Complete it fully. Update this file.
-> Never start a task from a later phase while the current phase has open tasks.
-> Status: [ ] = todo, [►] = in progress (with agent name), [✓] = done, [✗] = blocked
-
----
-
-## HOW TO USE THIS FILE
-
-1. Find the first `[ ]` task in the current active phase.
-2. Change `[ ]` to `[►]` with your identifier: `[► Claude]`
-3. Implement the task following SPEC.md requirements.
-4. Change `[►]` to `[✓]` when done. Add a one-line note of what you did.
-5. If blocked: change to `[✗]` and add a BLOCKED note below the task.
+## Phase 0: Project Bootstrap (Agent: Setup)
+- [ ] T-000: `flutter create dbstudio --platforms=windows,macos,linux`
+- [ ] T-001: Add all pubspec dependencies, run `flutter pub get`
+- [ ] T-002: Configure `analysis_options.yaml` (flutter_lints + strict)
+- [ ] T-003: Setup `build_runner` code generation pipeline
+- [ ] T-004: Create folder structure as per SPEC.md §3
+- [ ] T-005: Configure `go_router` routes skeleton
+- [ ] T-006: Setup Riverpod `ProviderScope` in `main.dart`
+- [ ] T-007: Register all drivers in `DriverRegistry`
+- [ ] T-008: Setup `logger` with file sink
 
 ---
 
-## ► PHASE 1 — FOUNDATION & MVP BROWSER
-
-### Setup & Scaffolding
-
-- [ ] **TASK-001** — Initialize the VS Code extension project structure
-  - Run `yo code` or manually create package.json with correct VS Code extension fields
-  - Set `"publisher"`, `"name"`, `"displayName"`, `"description"`, `"version"`, `"engines.vscode"`
-  - Set `"activationEvents": ["onStartupFinished"]`
-  - Add `"main": "./dist/extension.js"` 
-  - Create empty `src/extension/index.ts` with `activate()` and `deactivate()`
-  - Verify: `vsce package` runs without errors
-
-- [ ] **TASK-002** — Create the full directory structure
-  - Create all directories defined in ARCHITECTURE.md section 2
-  - Create placeholder index files in each directory
-  - Create `src/shared/messages.ts` with empty type definitions
-  - Create `src/shared/types.ts` with empty type definitions
-  - Verify: TypeScript compiles with zero errors
-
-- [ ] **TASK-003** — Set up build system (esbuild for extension, Vite for webview)
-  - `esbuild.config.js`: bundles `src/extension/index.ts` → `dist/extension.js`
-  - `vite.config.ts`: bundles `src/webview/main.tsx` → `dist/webview/`
-  - `package.json` scripts: `build`, `watch`, `package`, `test`
-  - Verify: both build commands run to completion
-
-- [ ] **TASK-004** — Create the Activity Bar icon SVG
-  - File: `media/icons/activity-bar.svg`
-  - Requirements from SPEC.md Module 6: 24×24 viewBox, monochrome, recognizable at small size
-  - Concept: browser window outline with a lightning bolt / sparkle indicator
-  - Must be valid SVG. Test by opening in browser.
-  - Verify: VS Code shows the icon in the Activity Bar when extension is loaded
-
-- [ ] **TASK-005** — Register Activity Bar sidebar in package.json
-  - Add `contributes.viewsContainers.activitybar` entry
-  - Add `contributes.views.devbrowser-pro` entry
-  - Add placeholder `SidebarProvider.ts` that returns an empty TreeView
-  - Verify: Activity Bar icon appears and clicking it opens an empty sidebar panel
-
-- [ ] **TASK-006** — Add Status Bar item
-  - Create a `vscode.StatusBarItem` on activation
-  - Text: `$(browser) DevBrowser`
-  - Position: Right side, priority 100
-  - Command: `devbrowser.openPanel`
-  - Verify: Status bar shows the item at VS Code bottom bar
-
-### Chrome Process Management
-
-- [ ] **TASK-007** — Implement `chromeLocator.ts`
-  - Detect Chrome/Edge path on Windows, macOS, Linux
-  - Return the first found path, in priority order (see RD.md section 8)
-  - Export: `async function findChrome(): Promise<string | null>`
-  - Write unit tests for each OS path pattern (mock filesystem)
-  - Verify: returns a valid path on the development machine
-
-- [ ] **TASK-008** — Implement `BrowserManager.ts` — Chrome spawn + connect
-  - Spawn Chrome with flags from ARCHITECTURE.md section 10
-  - Parse assigned CDP debugging port from Chrome's stderr
-  - Connect puppeteer-core to `ws://127.0.0.1:{port}`
-  - Expose: `getBrowser()`, `close()`
-  - Handle: Chrome crash (restart attempts), connection timeout
-  - Write unit tests (mock child_process, mock puppeteer)
-  - Verify: headless Chrome spawns and can be connected to
-
-- [ ] **TASK-009** — Implement `ProxyServer.ts` — local HTTP proxy
-  - Start Express.js server on random available port
-  - Log all passing traffic to a NetworkLog array
-  - Expose: `start(): Promise<number>` (returns port), `stop()`, `getPort()`
-  - Verify: HTTP requests routed through Chrome via proxy are captured
-
-### Webview Panel
-
-- [ ] **TASK-010** — Implement `BrowserPanel.ts` — WebviewPanel lifecycle
-  - Create `vscode.WebviewPanel` with correct options (see SPEC.md 1.3)
-  - Load webview HTML from build output
-  - Set up message handler (`panel.webview.onDidReceiveMessage`)
-  - Handle panel dispose (kill Chrome if no panels remain)
-  - Expose: `create()`, `reveal()`, `dispose()`
-
-- [ ] **TASK-011** — Create basic Webview React app (`src/webview/`)
-  - Set up React 18 with Vite
-  - Create `App.tsx` with placeholder layout:
-    - Tab bar at top
-    - URL bar below tab bar
-    - Viewport area (gray placeholder)
-    - DevTools area at bottom (gray placeholder)
-  - Set up `src/webview/bridge/vscode.ts` typed wrapper
-  - Verify: webview renders in VS Code panel without errors
-
-- [ ] **TASK-012** — Implement `PanelMessageHandler.ts`
-  - Route incoming Webview messages to the correct handler
-  - Handle: `USER_NAVIGATE`, `NEW_TAB`, `CLOSE_TAB`, `USER_CLICK`, `USER_KEYDOWN`
-  - Add to `src/shared/messages.ts` as messages are needed
-  - Write unit tests for message routing
-
-### Screencast & Navigation
-
-- [ ] **TASK-013** — Implement `TabManager.ts` — multi-tab management
-  - Create/close/switch tabs (see SPEC.md 2.2)
-  - Store TabState for each tab
-  - Manage CDP Page objects per tab
-  - Expose: `createTab()`, `closeTab()`, `switchTab()`, `getActiveTab()`
-  - Handle: new tab from `window.open()` / `target="_blank"`
-  - Write unit tests (mock puppeteer Page)
-
-- [ ] **TASK-014** — Implement `ScreencastManager.ts` — frame streaming
-  - Enable CDP screencast on active tab
-  - Relay frames to Webview via postMessage
-  - Implement frame rate control (24fps active, 5fps idle)
-  - Implement panel resize → restart screencast with new dimensions
-  - IMPORTANT: Verify the exact puppeteer-core API for CDP screencast before coding
-    (use `page.createCDPSession()` and direct CDP domain calls)
-  - Write unit tests (mock CDP session)
-
-- [ ] **TASK-015** — Implement Webview Viewport component (`src/webview/components/Viewport/`)
-  - `<canvas>` element that fills the viewport area
-  - Draw incoming JPEG frame data on canvas: decode base64 → ImageData → drawImage
-  - Capture mouse events and keyboard events
-  - Send events to Extension Host via `vscode.postMessage`
-  - Handle canvas resize (report new size to Extension Host)
-
-- [ ] **TASK-016** — Implement URL bar + navigation buttons (`src/webview/components/URLBar/`)
-  - Input field with current URL
-  - Back/Forward/Reload buttons
-  - Loading spinner during navigation
-  - Smart URL handling (see SPEC.md 2.1)
-  - Sends `USER_NAVIGATE` on Enter or Go button click
-  - Updates when Extension Host sends `PAGE_LOADED`
-
-- [ ] **TASK-017** — Implement Tab Bar (`src/webview/components/TabBar/`)
-  - Row of tab items, each with: favicon, title, close button
-  - "New Tab" button at end
-  - Active tab highlighted
-  - Sends `NEW_TAB` and `CLOSE_TAB` and `SWITCH_TAB` messages
-  - Updates from `TAB_CREATED`, `TAB_CLOSED`, `TAB_UPDATED` messages
-
-- [ ] **TASK-018** — End-to-end navigation test
-  - Open VS Code extension development host
-  - Open DevBrowser Pro panel
-  - Type `https://example.com` in URL bar
-  - Verify: example.com renders in the viewport
-  - This is the MVP smoke test. If this passes, Phase 1 is progressing.
-
-- [ ] **TASK-019** — Handle "Chrome not found" gracefully
-  - If `chromeLocator` returns null: show VS Code notification (see RD.md section 8)
-  - Render "lite mode" placeholder in the webview with install instructions
-  - Verify: extension does not crash when Chrome is missing
-
-- [ ] **TASK-020** — Clean deactivation
-  - `deactivate()` kills Chrome process, stops proxy server, stops MCP server
-  - Verify: no orphan Chrome processes after VS Code closes
-  - Test: kill Chrome mid-session → extension handles gracefully
-
-- [ ] **TASK-021** — Package and local install test
-  - Run `vsce package` → generates `.vsix` file
-  - Install locally: `code --install-extension devbrowser-pro.vsix`
-  - Verify all Phase 1 features work in installed (not dev) mode
-  - Write README.md with installation instructions
+## Phase 1: Core Data Models (Agent: Models)
+- [ ] T-100: `ConnectionProfile` (freezed + json_serializable)
+- [ ] T-101: `SSHConfig`, `SSLConfig`, `ConnectionPoolConfig`
+- [ ] T-102: `DatabaseType` enum + display names + default ports
+- [ ] T-103: `DatabaseObject` sealed class hierarchy (table, view, column, index, fk, proc, func, schema, sequence, trigger)
+- [ ] T-104: `QueryResult`, `ResultPage`, `ResultRow`
+- [ ] T-105: `SchemaMetadata`, `TableInfo`, `ColumnInfo`, `IndexInfo`, `ForeignKeyInfo`, `ViewInfo`, `RoutineInfo`
+- [ ] T-106: `AppSettings` (freezed)
+- [ ] T-107: `ExportConfig`, `ImportConfig`
+- [ ] T-108: `QueryHistoryEntry`, `Snippet`
 
 ---
 
-## PHASE 2 — FULL DEVTOOLS INSPECTOR
-*(Do not start until all Phase 1 tasks are ✓)*
+## Phase 2: Driver Abstraction Layer (Agent: Drivers)
+- [ ] T-200: Define `DatabaseDriver` abstract interface (SPEC §4.1)
+- [ ] T-201: Define `ConnectionEvent` sealed class (connected, disconnected, error, reconnecting)
+- [ ] T-202: `DriverRegistry` with `register()` and `create()`
 
-- [ ] **TASK-022** — DevTools panel layout (resizable split)
-- [ ] **TASK-023** — Elements panel: DOM tree viewer
-- [ ] **TASK-024** — Elements panel: CSS styles viewer
-- [ ] **TASK-025** — Elements panel: live CSS editing
-- [ ] **TASK-026** — Console panel: log display
-- [ ] **TASK-027** — Console panel: JS evaluation input
-- [ ] **TASK-028** — Network panel: request list
-- [ ] **TASK-029** — Network panel: request detail view
-- [ ] **TASK-030** — Network panel: copy as cURL
-- [ ] **TASK-031** — Performance panel: Core Web Vitals
-- [ ] **TASK-032** — Storage panel: cookies viewer/editor
-- [ ] **TASK-033** — Storage panel: localStorage viewer/editor
-- [ ] **TASK-034** — Responsive preview: device switcher
-- [ ] **TASK-035** — "Jump to Source": CSS rule → VS Code file
+### PostgreSQL Driver
+- [ ] T-210: `PostgresDriver.connect()` using `dart_postgres`
+- [ ] T-211: `PostgresDriver.executeQuery()` → stream ResultPage
+- [ ] T-212: `PostgresDriver.executeUpdate()`
+- [ ] T-213: `PostgresDriver` transaction support (begin/commit/rollback)
+- [ ] T-214: `PostgresDriver.cancelCurrentQuery()` using pg_cancel_backend
+- [ ] T-215: `PostgresMetadata.listSchemas/Tables/Columns/Indexes/FKs/Views/Routines`
+- [ ] T-216: `PostgresMetadata.generateDDL()` for all object types
+- [ ] T-217: PostgreSQL connection pool (min 1, max 10)
 
----
+### MySQL Driver
+- [ ] T-220: `MySQLDriver.connect()` using `mysql_client`
+- [ ] T-221: `MySQLDriver.executeQuery()` → stream ResultPage
+- [ ] T-222: `MySQLDriver.executeUpdate()`
+- [ ] T-223: `MySQLDriver` transaction support
+- [ ] T-224: `MySQLMetadata` — all metadata methods
+- [ ] T-225: `MySQLMetadata.generateDDL()`
 
-## PHASE 3 — AI INTEGRATION
-*(Do not start until all Phase 2 tasks are ✓)*
+### SQLite Driver
+- [ ] T-230: `SQLiteDriver.connect()` — file path or in-memory
+- [ ] T-231: `SQLiteDriver.executeQuery()`
+- [ ] T-232: `SQLiteDriver.executeUpdate()`
+- [ ] T-233: `SQLiteMetadata` — all metadata methods
 
-- [ ] **TASK-036** — AI panel: sidebar with chat UI
-- [ ] **TASK-037** — ContextBuilder: assembles browser state for AI
-- [ ] **TASK-038** — AIClient: calls Claude/GPT API
-- [ ] **TASK-039** — "Explain this error" on console error click
-- [ ] **TASK-040** — "Fix this CSS" on element selection
-- [ ] **TASK-041** — AI model selector in settings
-
----
-
-## PHASE 4 — BACKEND DEVELOPER TOOLS
-*(Do not start until all Phase 3 tasks are ✓)*
-
-- [ ] **TASK-042** — API Tester panel UI
-- [ ] **TASK-043** — RequestRunner: execute HTTP requests
-- [ ] **TASK-044** — CollectionManager: save/load collections
-- [ ] **TASK-045** — Environment variables system
-- [ ] **TASK-046** — MockEngine: intercept + return mock responses
-- [ ] **TASK-047** — "Send to API Tester" from Network panel
+### SSH Tunnel Service
+- [ ] T-240: `SSHTunnelService.openTunnel(sshConfig, remoteHost, remotePort)` → localPort
+- [ ] T-241: Keepalive ping every 30s
+- [ ] T-242: Auto-close tunnel on connection drop
+- [ ] T-243: Reconnect tunnel with exponential backoff
 
 ---
 
-## PHASE 5 — LIVE PAGE EDITOR
-*(Do not start until all Phase 4 tasks are ✓)*
-
-- [ ] **TASK-048** — Edit mode toggle in toolbar
-- [ ] **TASK-049** — Element selection with visual handles
-- [ ] **TASK-050** — CSS visual editor panel
-- [ ] **TASK-051** — Code-sync: write CSS changes to source files
-- [ ] **TASK-052** — Tailwind class picker
-- [ ] **TASK-053** — Undo/redo stack for visual edits
-
----
-
-## PHASE 6 — SECURITY / PENTEST SUITE
-*(Do not start until all Phase 5 tasks are ✓)*
-
-- [ ] **TASK-054** — PassiveScanner: all 15 passive checks
-- [ ] **TASK-055** — SecretDetector: all pattern types
-- [ ] **TASK-056** — HeadersGrader: A-F scoring
-- [ ] **TASK-057** — DepScanner: OSV.dev API integration
-- [ ] **TASK-058** — InterceptEngine: hold/forward/drop
-- [ ] **TASK-059** — Security panel UI
-- [ ] **TASK-060** — AI Security Advisor: read source + generate fix
-- [ ] **TASK-061** — Security report PDF export
+## Phase 3: Local Storage & Services (Agent: Storage)
+- [ ] T-300: Drift `AppDatabase` setup with migrations
+- [ ] T-301: `QueryHistoryTable` + `HistoryDao` (insert, list recent, search, delete)
+- [ ] T-302: `SnippetsTable` + `SnippetDao` (CRUD)
+- [ ] T-303: `CredentialService` using `flutter_secure_storage`
+- [ ] T-304: `ConnectionProfileRepository` — Hive encrypted box (store/load/delete profiles)
+- [ ] T-305: `AppSettingsRepository` — JSON file read/write
+- [ ] T-306: `SessionRestoreService` — save/restore open tabs on crash
 
 ---
 
-## PHASE 7 — MCP AI BRIDGE
-*(Do not start until all Phase 6 tasks are ✓)*
-
-- [ ] **TASK-062** — MCP server scaffold (stdio transport)
-- [ ] **TASK-063** — Core navigation tools (navigate, back, forward, reload)
-- [ ] **TASK-064** — Inspection tools (get_dom, get_console_logs, get_network_log)
-- [ ] **TASK-065** — Interaction tools (click, type, scroll, eval)
-- [ ] **TASK-066** — Screenshot tool (returns base64 JPEG)
-- [ ] **TASK-067** — Security tools via MCP
-- [ ] **TASK-068** — MCPAutoConfig: auto-write configs for Cursor/Windsurf/Copilot
-
----
-
-## PHASE 8 — CUSTOMIZATION PLATFORM
-*(Do not start until all Phase 7 tasks are ✓)*
-
-- [ ] **TASK-069** — ConfigManager: read/write .devbrowser/config.json
-- [ ] **TASK-070** — User scripts: ScriptRunner + ScriptSandbox
-- [ ] **TASK-071** — Plugin system: PluginHost + PluginSandbox
-- [ ] **TASK-072** — Theme engine: CSS variable overrides
-- [ ] **TASK-073** — Command palette inside DevBrowser Pro panel
-- [ ] **TASK-074** — React DevTools official plugin
+## Phase 4: Application Services (Agent: Services)
+- [ ] T-400: `ConnectionService` — open, close, manage open connections map
+- [ ] T-401: `QueryService.execute()` — delegates to driver, wraps stream, tracks time
+- [ ] T-402: `QueryService.cancel()` — delegates to driver.cancelCurrentQuery
+- [ ] T-403: `SchemaService.getChildren(node)` — fetches and caches metadata
+- [ ] T-404: `SchemaMetaCache` — trie-based cache, per connection, invalidated on DDL
+- [ ] T-405: `ExportService` — CSV, JSON, XLSX, SQL INSERT (all in isolate)
+- [ ] T-406: `ImportService` — CSV/Excel → table (column mapping, preview, error log)
+- [ ] T-407: `FormatterService` — SQL formatter (Dart implementation)
+- [ ] T-408: `AutocompleteService` — tokenize + trie lookup on schema cache
 
 ---
 
-## BLOCKED TASKS
-
-*(Move tasks here if they hit a blocker)*
-
-No blocked tasks currently.
+## Phase 5: State (Riverpod) (Agent: State)
+- [ ] T-500: `connectionProfilesProvider` — CRUD on profiles
+- [ ] T-501: `openConnectionsProvider` — map of connectionId → driver
+- [ ] T-502: `explorerStateProvider(connectionId)` — tree node loading + cache
+- [ ] T-503: `editorTabsProvider` — list of open tabs, active tab
+- [ ] T-504: `queryStateProvider(tabId)` — execution state, results stream
+- [ ] T-505: `gridStateProvider(tabId)` — page, sort, filter, pending edits
+- [ ] T-506: `schemaCacheProvider(connectionId)` — autocomplete metadata
+- [ ] T-507: `settingsProvider` — app settings, persisted
+- [ ] T-508: `historyProvider(connectionId)` — recent queries list
 
 ---
 
-## COMPLETED TASKS
+## Phase 6: UI — Layout & Shell (Agent: UI-Shell)
+- [ ] T-600: `AppShell` — three-pane layout (sidebar | editor/content | optional right panel)
+- [ ] T-601: `SplitPane` — resizable divider widget (horizontal + vertical)
+- [ ] T-602: `CustomTabBar` — tabs with close button, drag reorder, pin, detach
+- [ ] T-603: `TopMenuBar` — File / Edit / View / Query / Tools menus
+- [ ] T-604: `StatusBar` — connection indicator, row count, exec time, zoom
 
-*(Move tasks here when done, with completion note)*
+---
 
-No completed tasks yet.
+## Phase 7: UI — Connection Dialog (Agent: UI-Connections)
+- [ ] T-700: `ConnectionListPanel` — shows all profiles, grouped, with color dots
+- [ ] T-701: `NewConnectionDialog` — stepper: choose DB type → fill params → test → save
+- [ ] T-702: `SSHConfigForm` — host, port, user, key file picker, password
+- [ ] T-703: `SSLConfigForm` — mode (disable/allow/require/verify), cert file pickers
+- [ ] T-704: Connection test UI — spinner, green tick, red error with message
+
+---
+
+## Phase 8: UI — Object Explorer (Agent: UI-Explorer)
+- [ ] T-800: `ObjectTree` — lazy-loading tree using `explorerStateProvider`
+- [ ] T-801: `TreeNodeWidget` — icon + label, expand arrow, loading spinner
+- [ ] T-802: Context menu: table → Open Data, View DDL, Copy Name, Generate SELECT, Drop
+- [ ] T-803: Context menu: schema → New Table, ER Diagram, Schema Compare, Refresh
+- [ ] T-804: Context menu: column → Copy Name, View Type
+- [ ] T-805: Object search bar — filter tree by name (fuzzy match)
+
+---
+
+## Phase 9: UI — SQL Editor (Agent: UI-Editor)
+- [ ] T-900: `SQLEditorTab` — `re_editor` widget configured with SQL grammar
+- [ ] T-901: `EditorToolbar` — Run, Explain, Format, History, Snippets, Connection selector
+- [ ] T-902: Autocomplete popup — custom overlay widget, keyboard navigable
+- [ ] T-903: Error gutter — red markers on error lines from last execution
+- [ ] T-904: `QueryHistoryPanel` — slide-out panel, click to load query into editor
+- [ ] T-905: `SnippetPanel` — library of saved queries with tags and search
+- [ ] T-906: `ExecutionPlanTab` — shows EXPLAIN output as text + tree visualization
+- [ ] T-907: Multiple results tabs — when query returns multiple result sets
+
+---
+
+## Phase 10: UI — Data Grid (Agent: UI-Grid)
+- [ ] T-1000: `DataGrid` widget — `TwoDimensionalScrollView` based, virtual rows
+- [ ] T-1001: `GridHeader` — sortable columns, resize handle, hide/show menu
+- [ ] T-1002: `GridCell` — read mode + edit mode toggle on double-click
+- [ ] T-1003: `TextCellEditor` — inline text field
+- [ ] T-1004: `DateCellEditor` — date/datetime picker popup
+- [ ] T-1005: `BoolCellEditor` — checkbox toggle
+- [ ] T-1006: `JSONCellEditor` — expandable JSON viewer with syntax highlighting
+- [ ] T-1007: `BlobCellViewer` — hex dump for binary; image preview for image blobs
+- [ ] T-1008: `FilterBar` — per-column filter inputs above header row
+- [ ] T-1009: `GridFooter` — page selector, row count, commit/rollback buttons
+- [ ] T-1010: `ExportDialog` — format selector, path picker, progress bar
+- [ ] T-1011: NULL value rendering (grey italic "NULL" text)
+- [ ] T-1012: Pending-edit row highlight (yellow tint)
+- [ ] T-1013: Right-click context menu on cell: copy, copy row as JSON/CSV, set null
+
+---
+
+## Phase 11: UI — ER Diagram (Agent: UI-ER)
+- [ ] T-1100: `ERCanvas` — `InteractiveViewer` wrapping `CustomPaint`
+- [ ] T-1101: `ForceLayout` isolate — input: tables+FKs → output: positions
+- [ ] T-1102: `TableCard` painter — table name header + column rows
+- [ ] T-1103: `RelationPainter` — curved/straight arrows with FK label
+- [ ] T-1104: Drag table card to new position
+- [ ] T-1105: Table filter sidebar (show/hide specific tables)
+- [ ] T-1106: Export canvas as PNG (`toImage()`)
+- [ ] T-1107: Export canvas as SVG (custom SVG serializer)
+
+---
+
+## Phase 12: UI — Schema & DDL Tools (Agent: UI-Schema)
+- [ ] T-1200: `DDLViewer` — syntax-highlighted DDL in read-only code view
+- [ ] T-1201: `SchemaCompareDialog` — pick two connections/schemas
+- [ ] T-1202: `DiffViewer` — side-by-side diff, color-coded add/remove/change
+- [ ] T-1203: `GenerateMigrationDialog` — shows migration SQL, copy/download button
+- [ ] T-1204: `ImportDDLDialog` — file picker + execute DDL script
+
+---
+
+## Phase 13: UI — Settings (Agent: UI-Settings)
+- [ ] T-1300: `SettingsPage` — sidebar-based settings sections
+- [ ] T-1301: `AppearanceSettings` — theme, font, font size
+- [ ] T-1302: `EditorSettings` — tab size, line wrap, autocomplete toggle
+- [ ] T-1303: `GridSettings` — page size, null display text, date format
+- [ ] T-1304: `ShortcutSettings` — list of shortcuts, click to remap
+- [ ] T-1305: `ProxySettings` — HTTP proxy host/port/auth
+
+---
+
+## Phase 14: Testing (Agent: QA)
+- [ ] T-1400: Unit tests for all Driver implementations (mock TCP)
+- [ ] T-1401: Unit tests for all Services
+- [ ] T-1402: Unit tests for State notifiers
+- [ ] T-1403: Widget tests for DataGrid (virtual scroll, cell editing)
+- [ ] T-1404: Widget tests for SQLEditor (autocomplete, error markers)
+- [ ] T-1405: Widget tests for ObjectTree (lazy load, context menus)
+- [ ] T-1406: Integration tests: connect → query → edit → export flow
+- [ ] T-1407: Performance test: render 1M rows at 60fps
+
+---
+
+## Phase 15: Packaging & CI (Agent: DevOps)
+- [ ] T-1500: GitHub Actions CI: lint + test on push
+- [ ] T-1501: Windows build + NSIS installer
+- [ ] T-1502: macOS build + .dmg
+- [ ] T-1503: Linux .deb + .AppImage
+- [ ] T-1504: Code signing (macOS notarization, Windows Authenticode)
+- [ ] T-1505: Auto-update via `upgrader` package
+- [ ] T-1506: Crash reporting (Sentry optional, opt-in)

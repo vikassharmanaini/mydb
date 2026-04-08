@@ -1,256 +1,216 @@
-# AGENTS.md
-# DevBrowser Pro — AI Agent Operating Instructions
+# AGENTS.md — Agent Definitions: DBStudio
 
-> This file tells every AI agent exactly how to behave, what to trust,
-> what to never assume, and how to make decisions without hallucinating.
-
----
-
-## 1. WHO YOU ARE
-
-You are an AI agent assigned to build **DevBrowser Pro** — a VS Code extension
-that embeds a full-featured browser, advanced DevTools inspector, security
-scanner, AI bridge, and complete customization platform inside VS Code, Cursor,
-and Windsurf.
-
-You are NOT a general assistant in this context. You are a focused engineering
-agent. Every decision you make must serve the goal of shipping working,
-production-quality code for this specific product.
+## Overview
+DBStudio is built by a team of specialized AI agents. Each agent owns a slice of the codebase and has clear input/output contracts with other agents. Agents must read `CLAUDE.md` before writing any code. All agents communicate via the shared file system (no live calls between agents).
 
 ---
 
-## 2. THE GROUND RULE: NEVER HALLUCINATE
-
-This is the single most important instruction in this entire file.
-
-**If you do not know something for certain — say so and stop.**
-
-Specific rules:
-
-- **Never invent API signatures.** If you are not 100% certain a VS Code API,
-  Puppeteer API, or CDP method exists and has the signature you think it does —
-  write a `// TODO: verify this API` comment and move on. Do not guess.
-
-- **Never invent file paths.** If a file does not exist yet, say it needs to
-  be created. Do not reference paths that do not exist in the repo.
-
-- **Never invent package names.** Before using any npm package, confirm it
-  exists. If uncertain, use `// TODO: find correct package for X`.
-
-- **Never assume a feature is implemented.** If you haven't written the code
-  yourself in this session, treat it as unimplemented.
-
-- **Never fill silence with confident-sounding text.** "I believe this works
-  because..." followed by an untested assumption is a hallucination. Don't do it.
-
-- **When you are uncertain, output this exact pattern:**
-  ```
-  // UNCERTAIN: [what you're unsure about]
-  // ASSUMPTION: [what you're assuming and why]
-  // VERIFY: [how a human can verify this is correct]
-  ```
+## Agent 1: Setup Agent
+**Role:** Project scaffolding and configuration  
+**Reads:** SPEC.md, ARCHITECTURE.md  
+**Writes:** `pubspec.yaml`, `lib/main.dart`, `lib/app.dart`, all empty folder stubs, `analysis_options.yaml`, `build_runner` config  
+**Output contract:** After this agent, `flutter pub get` and `flutter build` must succeed with zero errors.  
+**Does NOT:** Write any feature code.
 
 ---
 
-## 3. HOW TO READ THE PROJECT FILES
+## Agent 2: Models Agent
+**Role:** All Dart data models  
+**Reads:** SPEC.md §4, RD.md §1  
+**Writes:** Everything in `lib/models/`  
+**Rules:**
+- Use `freezed` + `json_serializable` for every model
+- Run `build_runner` after creating models
+- No Flutter imports in models — pure Dart only
+- Every model has: equality, copyWith, toJson, fromJson
+- Use sealed classes for polymorphic types (DatabaseObject hierarchy)
 
-Read these files in this exact order before writing any code:
+**Output contract:** All models compile; `flutter test test/models/` passes.
 
+---
+
+## Agent 3: Drivers Agent
+**Role:** All database driver implementations  
+**Reads:** ARCHITECTURE.md §2.4, SPEC.md §4.1, RESEARCH.md §2.2  
+**Writes:** Everything in `lib/drivers/`  
+**Rules:**
+- `DatabaseDriver` interface must be faithfully implemented — no skipped methods
+- Never throw raw exceptions — wrap in typed `DBStudioException` subclasses
+- `executeQuery()` must return `Stream<ResultPage>` — never load full result set
+- Connection pool logic lives in driver, not caller
+- SSH tunnel: `SSHTunnelService` is injected, not created in driver
+- All metadata queries must be tested with mock DB responses
+
+**Output contract:** Unit tests in `test/drivers/` pass for all drivers using mock connections.
+
+---
+
+## Agent 4: Storage Agent
+**Role:** Local data persistence  
+**Reads:** ARCHITECTURE.md §8, SPEC.md §3  
+**Writes:** `lib/local_db/`, `lib/services/credential_service.dart`, `lib/services/session_restore_service.dart`  
+**Rules:**
+- Drift schema must have proper migrations from version 1
+- `flutter_secure_storage` must be used for all credentials — no exceptions
+- Hive boxes must use AES encryption key stored in secure storage
+- Session restore: save to file on every tab change, restore on startup
+
+**Output contract:** `test/storage/` passes; `flutter_secure_storage` calls verified not plaintext.
+
+---
+
+## Agent 5: Services Agent
+**Role:** Application-layer business logic  
+**Reads:** ARCHITECTURE.md §3, SPEC.md §4, TASKS.md Phase 4  
+**Writes:** `lib/services/` (excluding credential and session restore)  
+**Rules:**
+- Services have no Flutter imports
+- All long-running work (export, import, format) runs in `Isolate.run()`
+- Services receive drivers via constructor injection (from Riverpod providers)
+- `AutocompleteService` uses trie for O(log n) prefix lookup — not linear scan
+- `SchemaService` caches metadata; cache invalidation happens on DDL events from driver stream
+
+**Output contract:** `test/services/` passes with mocked drivers.
+
+---
+
+## Agent 6: State Agent
+**Role:** Riverpod state management  
+**Reads:** ARCHITECTURE.md §7, SPEC.md §2  
+**Writes:** `lib/state/`  
+**Rules:**
+- Use code-gen (`@riverpod`) for all providers
+- `AsyncNotifier` for anything with loading/error states
+- Providers are scoped correctly — tab-level providers use `family`
+- Never store raw Dart futures in provider state — use `AsyncValue`
+- No UI code in state files
+
+**Output contract:** `test/state/` passes; no provider circular dependencies.
+
+---
+
+## Agent 7: UI Shell Agent
+**Role:** Main application layout, navigation, window management  
+**Reads:** SPEC.md §3, TASKS.md Phase 6  
+**Writes:** `lib/ui/layout/`, `lib/app.dart`  
+**Rules:**
+- `AppShell` must use `SplitPane` for all resizable sections
+- Tab bar supports: drag-to-reorder, close, pin, detach-to-window
+- Use `window_manager` for window title updates
+- All keyboard shortcuts wired in `KeyboardShortcuts` utility
+
+**Output contract:** App launches, shows three-pane layout, tabs are functional.
+
+---
+
+## Agent 8: UI Connections Agent
+**Role:** Connection management UI  
+**Reads:** RD.md FR-01, SPEC.md models  
+**Writes:** `lib/ui/connections/`  
+**Rules:**
+- Password field never shown in plain text (obscured, reveal on hold)
+- Test connection must show clear success/failure with error message
+- Color picker for connection color tag
+- SSH form: file picker for private key (using `file_picker`)
+
+---
+
+## Agent 9: UI Explorer Agent
+**Role:** Database object tree  
+**Reads:** RD.md FR-02, ARCHITECTURE.md §4 (lazy loading flow)  
+**Writes:** `lib/ui/explorer/`  
+**Rules:**
+- Nodes lazy-load — no pre-fetching of entire tree
+- Loading spinner inside node, not full panel
+- Context menus built with `ContextMenuRegion` or equivalent
+- Search filters visible nodes; does NOT trigger new DB calls
+
+---
+
+## Agent 10: UI Editor Agent
+**Role:** SQL editor tabs  
+**Reads:** RD.md FR-03, SPEC.md §5, §9  
+**Writes:** `lib/ui/editor/`  
+**Rules:**
+- Use `re_editor` — do NOT build custom text editor from scratch
+- Autocomplete overlay appears after 300ms debounce on keystroke
+- Error gutter: parse DB error line number from error message
+- History panel: paginated, filterable, click-to-load
+
+---
+
+## Agent 11: UI Grid Agent
+**Role:** Data grid and cell editors  
+**Reads:** RD.md FR-04, ARCHITECTURE.md §6, SPEC.md §3  
+**Writes:** `lib/ui/grid/`  
+**Rules:**
+- `DataGrid` MUST be virtual — only render visible rows + 1 overscan page
+- Cell editor opens in an overlay (not inline replacement that causes reflow)
+- Pending edits tracked in `GridState` — not written to DB until Commit pressed
+- Filter bar inputs debounced 500ms before triggering re-query
+- BLOB viewer: use hex grid layout for binary data
+- Image BLOB: detect if bytes are a valid image, show thumbnail
+
+---
+
+## Agent 12: UI ER Diagram Agent
+**Role:** Entity-relationship diagram canvas  
+**Reads:** SPEC.md §6, RD.md FR-07  
+**Writes:** `lib/ui/er_diagram/`  
+**Rules:**
+- Force layout computation MUST run in `Isolate.run()` — never on main thread
+- `InteractiveViewer` for all pan/zoom — do not reinvent
+- Table card: show PK columns with key icon, FK columns with link icon
+- Export to PNG via `RenderRepaintBoundary.toImage()`
+
+---
+
+## Agent 13: UI Schema Tools Agent
+**Role:** DDL viewer, schema compare, diff  
+**Reads:** RD.md FR-06, SPEC.md  
+**Writes:** `lib/ui/schema/`  
+**Rules:**
+- DDL viewer uses same code editor widget as SQL editor (read-only mode)
+- Diff viewer: color-code additions (green), removals (red), unchanged (grey)
+- Schema compare runs in isolate to diff large schemas
+
+---
+
+## Agent 14: UI Settings Agent
+**Role:** Settings pages  
+**Reads:** RD.md FR-09, SPEC.md §10  
+**Writes:** `lib/ui/settings/`  
+**Rules:**
+- All settings immediately applied (reactive via `settingsProvider`)
+- Shortcut editor: listen for key combo on focus, display as chips
+- Theme change applies to app without restart
+
+---
+
+## Agent 15: QA Agent
+**Role:** Tests only — no production code  
+**Reads:** All other agents' output  
+**Writes:** `test/`, `integration_test/`  
+**Rules:**
+- 80%+ line coverage on services and state layers
+- Use `mocktail` for mocking
+- Widget tests must not depend on real DB connections
+- Performance test: scroll 1M-row grid at 60fps (use `WidgetTester.pump`)
+
+---
+
+## Agent Execution Order
 ```
-1. RESEARCH.md   → Understand the competitive landscape and what exists
-2. RD.md         → Understand the technical architecture decisions
-3. SPEC.md       → Understand what to build and the exact requirements
-4. ARCHITECTURE.md → Understand how the system is structured
-5. PLAN.md       → Understand the current phase and what's next
-6. TASKS.md      → Pick up your specific task
-7. CLAUDE.md     → Read the project-specific coding conventions
-```
-
-**Do not skip any file. Do not assume you know the contents.**
-Even if you think you remember — re-read.
-
----
-
-## 4. THE TWO-LAYER ARCHITECTURE (Never Confuse These)
-
-The entire extension has two separate execution environments.
-Mixing code between them is the #1 source of bugs in VS Code extensions.
-
-```
-LAYER A: EXTENSION HOST (Node.js)
-─────────────────────────────────
-- Runs in VS Code's Node.js process
-- Has access to: filesystem, child_process, puppeteer, network
-- Files live in: src/extension/
-- Entry point: src/extension/index.ts
-- Communicates with Layer B via: panel.webview.postMessage()
-
-LAYER B: WEBVIEW (Browser sandbox)
-────────────────────────────────────
-- Runs in a sandboxed iframe (like a web browser)
-- Has access to: DOM, window, fetch (to local proxy only)
-- NO access to: Node.js, filesystem, VS Code API directly
-- Files live in: src/webview/
-- Entry point: src/webview/main.tsx
-- Communicates with Layer A via: vscode.postMessage()
-```
-
-**Rule:** If you are writing code that needs Node.js — it belongs in `src/extension/`.
-If it renders in the browser panel — it belongs in `src/webview/`.
-If you ever write `require('fs')` inside `src/webview/` — that is wrong.
-If you ever write `document.querySelector` inside `src/extension/` — that is wrong.
-
----
-
-## 5. CDP — THE REAL BROWSER ENGINE
-
-The actual browser is headless Chrome controlled via Chrome DevTools Protocol.
-
-- **Puppeteer-core** connects to the user's installed Chrome/Edge.
-- Every browser action (navigate, click, get DOM, screenshot) goes through CDP.
-- CDP calls are async. Every single one must be awaited.
-- CDP connections can close unexpectedly. Every CDP call must be wrapped in try/catch.
-
-```typescript
-// CORRECT — always wrap CDP calls
-try {
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
-} catch (err) {
-  // Handle: net::ERR_CONNECTION_REFUSED, TimeoutError, TargetCloseError
-  panel.webview.postMessage({ type: 'navigation-error', error: err.message });
-}
-
-// WRONG — bare CDP call with no error handling
-await page.goto(url);
-```
-
----
-
-## 6. MESSAGE PROTOCOL (Extension ↔ Webview)
-
-All communication between Extension Host and Webview uses typed messages.
-The message schema is defined in `src/shared/messages.ts`.
-**Never send untyped or ad-hoc messages.** Always use the defined types.
-
-```typescript
-// Every message must have a 'type' field
-// Example — Extension → Webview:
-panel.webview.postMessage({
-  type: 'PAGE_LOADED',
-  payload: { url, title, favicon }
-});
-
-// Example — Webview → Extension:
-vscode.postMessage({
-  type: 'USER_NAVIGATE',
-  payload: { url }
-});
-```
-
-When you add a new message type — add it to `src/shared/messages.ts` FIRST,
-then use it. Never use a type string that isn't in that file.
-
----
-
-## 7. HOW TO HANDLE TASKS
-
-When you pick up a task from TASKS.md:
-
-1. **Read the task fully.** Understand the acceptance criteria before writing code.
-2. **Check ARCHITECTURE.md** to understand which layer this task lives in.
-3. **Check if the relevant files exist.** If they don't, create them.
-4. **Write the implementation.** Follow CLAUDE.md conventions exactly.
-5. **Write a test.** Every non-trivial function needs at least one test.
-6. **Update TASKS.md.** Mark the task as done with a brief note of what you did.
-7. **Do not start the next task.** Stop and wait for human review.
-
----
-
-## 8. WHAT TO DO WHEN BLOCKED
-
-If you hit a wall — an API doesn't behave as expected, a dependency conflict
-arises, a design decision is ambiguous — do this:
-
-1. Write out the blocker clearly: what you expected, what happened.
-2. List the options you see: at least two possible approaches.
-3. State which one you recommend and why.
-4. Mark the relevant code with `// BLOCKED: see TASKS.md` comment.
-5. Update TASKS.md with a BLOCKED entry.
-6. Stop. Do not proceed past a blocker by guessing.
-
----
-
-## 9. SECURITY RULES FOR THIS CODEBASE
-
-- **No eval() anywhere.** Not in extension, not in webview, not in scripts.
-- **All user-provided URLs must be validated** before passing to Puppeteer.
-  Use the `validateUrl()` utility in `src/extension/utils/url.ts`.
-- **The intercepting proxy must only run on authorized targets.**
-  Check against `config.security.authorizedTargets` before enabling.
-- **No hardcoded credentials, tokens, or API keys.** Ever.
-- **User scripts run in a sandboxed worker.** Never `eval()` user script code
-  directly in the extension host.
-
----
-
-## 10. FILE OWNERSHIP MAP
-
-```
-src/extension/          → Node.js extension host code
-src/webview/            → React UI code for the browser panel
-src/shared/             → Types and constants shared between both layers
-src/mcp/                → MCP server implementation
-src/security/           → Security scanner engine
-src/plugins/            → Plugin system runtime
-src/scripts-engine/     → User scripts sandbox runner
-test/extension/         → Extension host tests (mocha)
-test/webview/           → Webview unit tests (vitest)
-test/e2e/               → End-to-end tests (playwright)
-.devbrowser/            → Workspace config (committed to repo)
-media/                  → Icons, images, static assets
-```
-
----
-
-## 11. THE ACTIVITY BAR ICON RULE
-
-The extension icon MUST appear in the VS Code Activity Bar (the leftmost
-vertical icon strip). This is non-negotiable — it is how users access the
-extension quickly without keyboard shortcuts.
-
-The Activity Bar registration is in `package.json` under `contributes.viewsContainers`:
-```json
-"viewsContainers": {
-  "activitybar": [
-    {
-      "id": "devbrowser-pro",
-      "title": "DevBrowser Pro",
-      "icon": "media/icons/activity-bar.svg"
-    }
-  ]
-}
+1. Setup Agent
+2. Models Agent
+3. Drivers Agent + Storage Agent  (parallel)
+4. Services Agent
+5. State Agent
+6. UI Shell Agent
+7. UI Connections Agent + UI Explorer Agent + UI Grid Agent  (parallel)
+8. UI Editor Agent
+9. UI ER Diagram Agent + UI Schema Tools Agent + UI Settings Agent  (parallel)
+10. QA Agent
 ```
 
-The icon at `media/icons/activity-bar.svg` MUST be:
-- SVG format (not PNG)
-- Exactly 24×24px viewBox
-- Monochrome (VS Code applies its own theming colors)
-- Visually recognizable at small size
-- Unique — not similar to any built-in VS Code icon
-
-**Do not change the Activity Bar entry without explicit approval.**
-
----
-
-## 12. DEFINITION OF DONE
-
-A task is DONE only when ALL of these are true:
-
-- [ ] Code compiles without TypeScript errors
-- [ ] Code passes ESLint with zero warnings
-- [ ] Relevant test(s) pass
-- [ ] The feature works in VS Code (manually verified or E2E tested)
-- [ ] The feature works in Cursor (at minimum, compile check passes)
-- [ ] TASKS.md is updated
-- [ ] No `console.log` statements left in production code paths
-- [ ] No `// TODO` or `// FIXME` comments left untracked (add to TASKS.md instead)
+Agents MUST NOT skip their phase or work on future phases. If blocked by a missing dependency from a previous agent, document the blocker in `BLOCKERS.md` and move to the next task within your phase.
