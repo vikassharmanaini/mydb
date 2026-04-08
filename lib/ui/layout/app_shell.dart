@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mydb/ui/connections/connection_sidebar.dart';
 
 /// Three-pane scaffold: connections sidebar | main content | (optional) right panel.
 class AppShell extends StatelessWidget {
@@ -6,7 +7,7 @@ class AppShell extends StatelessWidget {
 
   final Widget child;
 
-  static const double _sidebarWidth = 260;
+  static const double _sidebarWidth = 280;
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +19,7 @@ class AppShell extends StatelessWidget {
             width: _sidebarWidth,
             child: Material(
               color: scheme.surfaceContainerHighest,
-              child: const _SidebarPlaceholder(),
+              child: const ConnectionSidebar(),
             ),
           ),
           Expanded(
@@ -26,33 +27,6 @@ class AppShell extends StatelessWidget {
               color: scheme.surface,
               child: child,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SidebarPlaceholder extends StatelessWidget {
-  const _SidebarPlaceholder();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            'Connections',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'No connections yet.\nUse File → New connection when wired.',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
           ),
         ],
       ),
