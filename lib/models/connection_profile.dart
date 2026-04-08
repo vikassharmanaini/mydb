@@ -17,6 +17,8 @@ class ConnectionProfile with _$ConnectionProfile {
     required int port,
     required String database,
     required String username,
+    /// Filled in memory before [DatabaseDriver.connect]; never persisted to JSON.
+    @JsonKey(includeFromJson: false, includeToJson: false) String? password,
     SSLConfig? ssl,
     SSHConfig? ssh,
     @Default(ConnectionPoolConfig()) ConnectionPoolConfig pool,

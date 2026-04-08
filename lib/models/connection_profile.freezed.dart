@@ -27,6 +27,10 @@ mixin _$ConnectionProfile {
   int get port => throw _privateConstructorUsedError;
   String get database => throw _privateConstructorUsedError;
   String get username => throw _privateConstructorUsedError;
+
+  /// Filled in memory before [DatabaseDriver.connect]; never persisted to JSON.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  String? get password => throw _privateConstructorUsedError;
   SSLConfig? get ssl => throw _privateConstructorUsedError;
   SSHConfig? get ssh => throw _privateConstructorUsedError;
   ConnectionPoolConfig get pool => throw _privateConstructorUsedError;
@@ -57,6 +61,7 @@ abstract class $ConnectionProfileCopyWith<$Res> {
       int port,
       String database,
       String username,
+      @JsonKey(includeFromJson: false, includeToJson: false) String? password,
       SSLConfig? ssl,
       SSHConfig? ssh,
       ConnectionPoolConfig pool,
@@ -90,6 +95,7 @@ class _$ConnectionProfileCopyWithImpl<$Res, $Val extends ConnectionProfile>
     Object? port = null,
     Object? database = null,
     Object? username = null,
+    Object? password = freezed,
     Object? ssl = freezed,
     Object? ssh = freezed,
     Object? pool = null,
@@ -125,6 +131,10 @@ class _$ConnectionProfileCopyWithImpl<$Res, $Val extends ConnectionProfile>
           ? _value.username
           : username // ignore: cast_nullable_to_non_nullable
               as String,
+      password: freezed == password
+          ? _value.password
+          : password // ignore: cast_nullable_to_non_nullable
+              as String?,
       ssl: freezed == ssl
           ? _value.ssl
           : ssl // ignore: cast_nullable_to_non_nullable
@@ -203,6 +213,7 @@ abstract class _$$ConnectionProfileImplCopyWith<$Res>
       int port,
       String database,
       String username,
+      @JsonKey(includeFromJson: false, includeToJson: false) String? password,
       SSLConfig? ssl,
       SSHConfig? ssh,
       ConnectionPoolConfig pool,
@@ -237,6 +248,7 @@ class __$$ConnectionProfileImplCopyWithImpl<$Res>
     Object? port = null,
     Object? database = null,
     Object? username = null,
+    Object? password = freezed,
     Object? ssl = freezed,
     Object? ssh = freezed,
     Object? pool = null,
@@ -272,6 +284,10 @@ class __$$ConnectionProfileImplCopyWithImpl<$Res>
           ? _value.username
           : username // ignore: cast_nullable_to_non_nullable
               as String,
+      password: freezed == password
+          ? _value.password
+          : password // ignore: cast_nullable_to_non_nullable
+              as String?,
       ssl: freezed == ssl
           ? _value.ssl
           : ssl // ignore: cast_nullable_to_non_nullable
@@ -307,6 +323,7 @@ class _$ConnectionProfileImpl implements _ConnectionProfile {
       required this.port,
       required this.database,
       required this.username,
+      @JsonKey(includeFromJson: false, includeToJson: false) this.password,
       this.ssl,
       this.ssh,
       this.pool = const ConnectionPoolConfig(),
@@ -330,6 +347,11 @@ class _$ConnectionProfileImpl implements _ConnectionProfile {
   final String database;
   @override
   final String username;
+
+  /// Filled in memory before [DatabaseDriver.connect]; never persisted to JSON.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? password;
   @override
   final SSLConfig? ssl;
   @override
@@ -345,7 +367,7 @@ class _$ConnectionProfileImpl implements _ConnectionProfile {
 
   @override
   String toString() {
-    return 'ConnectionProfile(id: $id, name: $name, type: $type, host: $host, port: $port, database: $database, username: $username, ssl: $ssl, ssh: $ssh, pool: $pool, colorHex: $colorHex, createdAt: $createdAt)';
+    return 'ConnectionProfile(id: $id, name: $name, type: $type, host: $host, port: $port, database: $database, username: $username, password: $password, ssl: $ssl, ssh: $ssh, pool: $pool, colorHex: $colorHex, createdAt: $createdAt)';
   }
 
   @override
@@ -362,6 +384,8 @@ class _$ConnectionProfileImpl implements _ConnectionProfile {
                 other.database == database) &&
             (identical(other.username, username) ||
                 other.username == username) &&
+            (identical(other.password, password) ||
+                other.password == password) &&
             (identical(other.ssl, ssl) || other.ssl == ssl) &&
             (identical(other.ssh, ssh) || other.ssh == ssh) &&
             (identical(other.pool, pool) || other.pool == pool) &&
@@ -374,7 +398,7 @@ class _$ConnectionProfileImpl implements _ConnectionProfile {
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
   int get hashCode => Object.hash(runtimeType, id, name, type, host, port,
-      database, username, ssl, ssh, pool, colorHex, createdAt);
+      database, username, password, ssl, ssh, pool, colorHex, createdAt);
 
   /// Create a copy of ConnectionProfile
   /// with the given fields replaced by the non-null parameter values.
@@ -402,6 +426,8 @@ abstract class _ConnectionProfile implements ConnectionProfile {
       required final int port,
       required final String database,
       required final String username,
+      @JsonKey(includeFromJson: false, includeToJson: false)
+      final String? password,
       final SSLConfig? ssl,
       final SSHConfig? ssh,
       final ConnectionPoolConfig pool,
@@ -425,6 +451,11 @@ abstract class _ConnectionProfile implements ConnectionProfile {
   String get database;
   @override
   String get username;
+
+  /// Filled in memory before [DatabaseDriver.connect]; never persisted to JSON.
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  String? get password;
   @override
   SSLConfig? get ssl;
   @override
