@@ -10,7 +10,7 @@ class ConnectionSidebar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final List<ConnectionProfile> profiles =
+    final AsyncValue<List<ConnectionProfile>> profilesAsync =
         ref.watch(savedConnectionProfilesProvider);
     final Set<String> live = ref.watch(liveConnectionsProvider);
     final String? selected = ref.watch(selectedConnectionIdProvider);
@@ -46,8 +46,18 @@ class ConnectionSidebar extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         Expanded(
-          child: profiles.isEmpty
-              ? Padding(
+          child: profilesAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (Object e, StackTrace _) => Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Could not load connections:\n$e',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+            data: (List<ConnectionProfile> profiles) {
+              if (profiles.isEmpty) {
+                return Padding(
                   padding: const EdgeInsets.all(16),
                   child: Text(
                     'No saved connections.\nTap Add connection to create one, then connect.',
@@ -55,112 +65,116 @@ class ConnectionSidebar extends ConsumerWidget {
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  itemCount: profiles.length,
-                  itemBuilder: (BuildContext context, int i) {
-                    final ConnectionProfile p = profiles[i];
-                    final bool on = live.contains(p.id);
-                    final bool isSel = selected == p.id;
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 6),
-                      color: isSel
-                          ? Theme.of(context)
-                              .colorScheme
-                              .primaryContainer
-                              .withValues(alpha: 0.35)
-                          : null,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 2,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            ListTile(
-                              dense: true,
-                              contentPadding: EdgeInsets.zero,
-                              leading: Icon(
-                                _iconFor(p.type),
-                                size: 22,
-                                color: on ? Colors.green : null,
-                              ),
-                              title: Text(
-                                p.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              subtitle: Text(
-                                '${p.type.displayName} · ${p.database}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                              trailing: on
-                                  ? IconButton(
-                                      tooltip: 'Disconnect',
-                                      icon: const Icon(Icons.link_off),
-                                      onPressed: () async {
-                                        await ref
-                                            .read(
-                                              liveConnectionsProvider.notifier,
-                                            )
-                                            .disconnect(p.id);
-                                        if (selected == p.id) {
-                                          ref
-                                              .read(
-                                                selectedConnectionIdProvider
-                                                    .notifier,
-                                              )
-                                              .select(null);
-                                        }
-                                      },
-                                    )
-                                  : IconButton(
-                                      tooltip: 'Connect',
-                                      icon: const Icon(Icons.link),
-                                      onPressed: () => showConnectDialog(
-                                        context,
-                                        ref,
-                                        p,
-                                      ),
-                                    ),
+                );
+              }
+              return ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                itemCount: profiles.length,
+                itemBuilder: (BuildContext context, int i) {
+                  final ConnectionProfile p = profiles[i];
+                  final bool on = live.contains(p.id);
+                  final bool isSel = selected == p.id;
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    color: isSel
+                        ? Theme.of(context)
+                            .colorScheme
+                            .primaryContainer
+                            .withValues(alpha: 0.35)
+                        : null,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              _iconFor(p.type),
+                              size: 22,
+                              color: on ? Colors.green : null,
                             ),
-                            Row(
-                              children: <Widget>[
-                                if (on)
-                                  TextButton(
-                                    onPressed: () {
-                                      ref
+                            title: Text(
+                              p.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              '${p.type.displayName} · ${p.database}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            trailing: on
+                                ? IconButton(
+                                    tooltip: 'Disconnect',
+                                    icon: const Icon(Icons.link_off),
+                                    onPressed: () async {
+                                      await ref
                                           .read(
-                                            selectedConnectionIdProvider
-                                                .notifier,
+                                            liveConnectionsProvider.notifier,
                                           )
-                                          .select(p.id);
+                                          .disconnect(p.id);
+                                      if (selected == p.id) {
+                                        ref
+                                            .read(
+                                              selectedConnectionIdProvider
+                                                  .notifier,
+                                            )
+                                            .select(null);
+                                      }
                                     },
-                                    child: const Text('Use'),
-                                  ),
-                                const Spacer(),
-                                TextButton(
-                                  onPressed: () =>
-                                      _confirmDelete(context, ref, p, on),
-                                  child: Text(
-                                    'Remove',
-                                    style: TextStyle(
-                                      color: Theme.of(context).colorScheme.error,
+                                  )
+                                : IconButton(
+                                    tooltip: 'Connect',
+                                    icon: const Icon(Icons.link),
+                                    onPressed: () => showConnectDialog(
+                                      context,
+                                      ref,
+                                      p,
                                     ),
+                                  ),
+                          ),
+                          Row(
+                            children: <Widget>[
+                              if (on)
+                                TextButton(
+                                  onPressed: () {
+                                    ref
+                                        .read(
+                                          selectedConnectionIdProvider
+                                              .notifier,
+                                        )
+                                        .select(p.id);
+                                  },
+                                  child: const Text('Use'),
+                                ),
+                              const Spacer(),
+                              TextButton(
+                                onPressed: () =>
+                                    _confirmDelete(context, ref, p, on),
+                                child: Text(
+                                  'Remove',
+                                  style: TextStyle(
+                                    color:
+                                        Theme.of(context).colorScheme.error,
                                   ),
                                 ),
-                              ],
-                            ),
-                          ],
-                        ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
       ],
     );
@@ -208,7 +222,7 @@ class ConnectionSidebar extends ConsumerWidget {
     if (wasLive) {
       await ref.read(liveConnectionsProvider.notifier).disconnect(p.id);
     }
-    ref.read(savedConnectionProfilesProvider.notifier).remove(p.id);
+    await ref.read(savedConnectionProfilesProvider.notifier).remove(p.id);
     final String? sel = ref.read(selectedConnectionIdProvider);
     if (sel == p.id) {
       ref.read(selectedConnectionIdProvider.notifier).select(null);

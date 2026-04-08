@@ -1,31 +1,69 @@
 import 'package:mydb/drivers/driver_interface.dart';
 import 'package:mydb/drivers/driver_registry.dart';
 import 'package:mydb/models/connection_profile.dart';
+import 'package:mydb/services/connection_profile_repository.dart';
+import 'package:mydb/services/credential_service.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'connection_providers.g.dart';
 
-/// Saved connection profiles (passwords are never stored here).
+@Riverpod(keepAlive: true)
+Future<CredentialService> credentialService(CredentialServiceRef ref) async {
+  return CredentialService();
+}
+
+@Riverpod(keepAlive: true)
+Future<ConnectionProfileRepository> connectionProfileRepository(
+  ConnectionProfileRepositoryRef ref,
+) async {
+  return ConnectionProfileRepository.open();
+}
+
+/// Saved connection profiles (passwords are never stored in Hive).
 @Riverpod(keepAlive: true)
 class SavedConnectionProfiles extends _$SavedConnectionProfiles {
   @override
-  List<ConnectionProfile> build() => <ConnectionProfile>[];
-
-  void upsert(ConnectionProfile profile) {
-    final ConnectionProfile withoutSecret = profile.copyWith(password: null);
-    state = <ConnectionProfile>[
-      for (final ConnectionProfile p in state)
-        if (p.id != withoutSecret.id) p,
-      withoutSecret,
-    ];
+  Future<List<ConnectionProfile>> build() async {
+    final ConnectionProfileRepository repo =
+        await ref.watch(connectionProfileRepositoryProvider.future);
+    return repo.loadAll();
   }
 
-  void remove(String id) {
-    state = state.where((ConnectionProfile p) => p.id != id).toList();
+  Future<void> upsert(ConnectionProfile profile) async {
+    final ConnectionProfileRepository repo =
+        await ref.read(connectionProfileRepositoryProvider.future);
+    final ConnectionProfile clean = profile.copyWith(password: null);
+    final List<ConnectionProfile> current =
+        state.asData?.value ?? await future;
+    final List<ConnectionProfile> next = <ConnectionProfile>[
+      for (final ConnectionProfile p in current)
+        if (p.id != clean.id) p,
+      clean,
+    ];
+    state = AsyncData<List<ConnectionProfile>>(next);
+    await repo.save(clean);
+  }
+
+  Future<void> remove(String id) async {
+    final ConnectionProfileRepository repo =
+        await ref.read(connectionProfileRepositoryProvider.future);
+    final CredentialService cred =
+        await ref.read(credentialServiceProvider.future);
+    final List<ConnectionProfile> current =
+        state.asData?.value ?? await future;
+    state = AsyncData<List<ConnectionProfile>>(
+      current.where((ConnectionProfile p) => p.id != id).toList(),
+    );
+    await repo.delete(id);
+    await cred.deletePassword(id);
   }
 
   ConnectionProfile? byId(String id) {
-    for (final ConnectionProfile p in state) {
+    final List<ConnectionProfile>? list = state.asData?.value;
+    if (list == null) {
+      return null;
+    }
+    for (final ConnectionProfile p in list) {
       if (p.id == id) {
         return p;
       }

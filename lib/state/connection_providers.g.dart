@@ -6,15 +6,52 @@ part of 'connection_providers.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$savedConnectionProfilesHash() =>
-    r'f7cbbc93b43a478c1a160b328afc51899a19c341';
+String _$credentialServiceHash() => r'a9ee7b798833653c676da3d7dacefa02b7cad153';
 
-/// Saved connection profiles (passwords are never stored here).
+/// See also [credentialService].
+@ProviderFor(credentialService)
+final credentialServiceProvider = FutureProvider<CredentialService>.internal(
+  credentialService,
+  name: r'credentialServiceProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$credentialServiceHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef CredentialServiceRef = FutureProviderRef<CredentialService>;
+String _$connectionProfileRepositoryHash() =>
+    r'92c1e8ce36f5949001c4f331ab9927654c4b85b7';
+
+/// See also [connectionProfileRepository].
+@ProviderFor(connectionProfileRepository)
+final connectionProfileRepositoryProvider =
+    FutureProvider<ConnectionProfileRepository>.internal(
+  connectionProfileRepository,
+  name: r'connectionProfileRepositoryProvider',
+  debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
+      ? null
+      : _$connectionProfileRepositoryHash,
+  dependencies: null,
+  allTransitiveDependencies: null,
+);
+
+@Deprecated('Will be removed in 3.0. Use Ref instead')
+// ignore: unused_element
+typedef ConnectionProfileRepositoryRef
+    = FutureProviderRef<ConnectionProfileRepository>;
+String _$savedConnectionProfilesHash() =>
+    r'43cc84d072f50dabcfde86b244fca65eb3143a89';
+
+/// Saved connection profiles (passwords are never stored in Hive).
 ///
 /// Copied from [SavedConnectionProfiles].
 @ProviderFor(SavedConnectionProfiles)
-final savedConnectionProfilesProvider =
-    NotifierProvider<SavedConnectionProfiles, List<ConnectionProfile>>.internal(
+final savedConnectionProfilesProvider = AsyncNotifierProvider<
+    SavedConnectionProfiles, List<ConnectionProfile>>.internal(
   SavedConnectionProfiles.new,
   name: r'savedConnectionProfilesProvider',
   debugGetCreateSourceHash: const bool.fromEnvironment('dart.vm.product')
@@ -24,7 +61,7 @@ final savedConnectionProfilesProvider =
   allTransitiveDependencies: null,
 );
 
-typedef _$SavedConnectionProfiles = Notifier<List<ConnectionProfile>>;
+typedef _$SavedConnectionProfiles = AsyncNotifier<List<ConnectionProfile>>;
 String _$liveConnectionsHash() => r'e57e32947230c20cc14d7b01a18752a453bf14e0';
 
 /// Open [DatabaseDriver] instances keyed by profile id.

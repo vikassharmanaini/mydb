@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mydb/models/connection_profile.dart';
 import 'package:mydb/models/database_type.dart';
 import 'package:mydb/models/ssl_config.dart';
+import 'package:mydb/services/credential_service.dart';
 import 'package:mydb/state/connection_providers.dart';
 import 'package:uuid/uuid.dart';
 
@@ -53,6 +54,23 @@ class _QuickConnectDialog extends StatefulWidget {
 class _QuickConnectDialogState extends State<_QuickConnectDialog> {
   final TextEditingController _password = TextEditingController();
   bool _busy = false;
+  bool _rememberPassword = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _prefillPassword();
+  }
+
+  Future<void> _prefillPassword() async {
+    final CredentialService cred =
+        await _ref.read(credentialServiceProvider.future);
+    final String? saved = await cred.readPassword(_profile.id);
+    if (!mounted || saved == null) {
+      return;
+    }
+    setState(() => _password.text = saved);
+  }
 
   bool get _needsPassword =>
       widget.profile.type == DatabaseType.postgres ||
@@ -75,14 +93,27 @@ class _QuickConnectDialogState extends State<_QuickConnectDialog> {
       content: SizedBox(
         width: 360,
         child: _needsPassword
-            ? TextField(
-                controller: _password,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(),
-                ),
-                obscureText: true,
-                onSubmitted: (_) => _go(),
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  TextField(
+                    controller: _password,
+                    decoration: const InputDecoration(
+                      labelText: 'Password',
+                      border: OutlineInputBorder(),
+                    ),
+                    obscureText: true,
+                    onSubmitted: (_) => _go(),
+                  ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Remember password (OS keychain)'),
+                    value: _rememberPassword,
+                    onChanged: (bool? v) =>
+                        setState(() => _rememberPassword = v ?? false),
+                  ),
+                ],
               )
             : Text(
                 'Connect to ${_profile.type.displayName}?',
@@ -117,6 +148,17 @@ class _QuickConnectDialogState extends State<_QuickConnectDialog> {
     );
     try {
       await _ref.read(liveConnectionsProvider.notifier).connect(withSecret);
+      if (!mounted) {
+        return;
+      }
+      if (_rememberPassword &&
+          _needsPassword &&
+          withSecret.password != null &&
+          withSecret.password!.isNotEmpty) {
+        final CredentialService cred =
+            await _ref.read(credentialServiceProvider.future);
+        await cred.storePassword(withSecret.id, withSecret.password!);
+      }
       if (!mounted) {
         return;
       }
@@ -165,6 +207,7 @@ class _ConnectionFormDialogState extends State<_ConnectionFormDialog> {
   final _password = TextEditingController();
   DatabaseType _type = DatabaseType.postgres;
   bool _useTls = true;
+  bool _rememberPassword = false;
   bool _busy = false;
 
   @override
@@ -324,6 +367,13 @@ class _ConnectionFormDialogState extends State<_ConnectionFormDialog> {
                     value: _useTls,
                     onChanged: (bool v) => setState(() => _useTls = v),
                   ),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Remember password (OS keychain)'),
+                    value: _rememberPassword,
+                    onChanged: (bool? v) =>
+                        setState(() => _rememberPassword = v ?? false),
+                  ),
                 ],
               ],
             ),
@@ -385,7 +435,7 @@ class _ConnectionFormDialogState extends State<_ConnectionFormDialog> {
       return;
     }
     final ConnectionProfile p = _buildProfile();
-    _ref.read(savedConnectionProfilesProvider.notifier).upsert(p);
+    await _ref.read(savedConnectionProfilesProvider.notifier).upsert(p);
     if (!mounted) {
       return;
     }
@@ -401,9 +451,20 @@ class _ConnectionFormDialogState extends State<_ConnectionFormDialog> {
     }
     setState(() => _busy = true);
     final ConnectionProfile p = _buildProfile();
-    _ref.read(savedConnectionProfilesProvider.notifier).upsert(p);
+    await _ref.read(savedConnectionProfilesProvider.notifier).upsert(p);
     try {
       await _ref.read(liveConnectionsProvider.notifier).connect(p);
+      if (!mounted) {
+        return;
+      }
+      if (_rememberPassword &&
+          !_isSqlite &&
+          p.password != null &&
+          p.password!.isNotEmpty) {
+        final CredentialService cred =
+            await _ref.read(credentialServiceProvider.future);
+        await cred.storePassword(p.id, p.password!);
+      }
       if (!mounted) {
         return;
       }
