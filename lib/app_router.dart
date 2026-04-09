@@ -5,6 +5,7 @@ import 'package:mydb/models/connection_profile.dart';
 import 'package:mydb/state/connection_providers.dart';
 import 'package:mydb/ui/layout/app_shell.dart';
 import 'package:mydb/ui/query/query_workspace.dart';
+import 'package:mydb/ui/settings/settings_page.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'app_router.g.dart';
@@ -23,6 +24,12 @@ GoRouter goRouter(GoRouterRef ref) {
             path: '/',
             builder: (BuildContext context, GoRouterState state) {
               return const _HomeBody();
+            },
+          ),
+          GoRoute(
+            path: '/settings',
+            builder: (BuildContext context, GoRouterState state) {
+              return const SettingsPage();
             },
           ),
         ],

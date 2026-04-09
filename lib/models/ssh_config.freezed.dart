@@ -30,6 +30,10 @@ mixin _$SSHConfig {
   /// Key passphrase stored via [CredentialService], not serialized here.
   bool get hasKeyPassphrase => throw _privateConstructorUsedError;
 
+  /// SSH login password (in memory only; never written to JSON).
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  String? get password => throw _privateConstructorUsedError;
+
   /// Serializes this SSHConfig to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
@@ -50,7 +54,8 @@ abstract class $SSHConfigCopyWith<$Res> {
       int port,
       String username,
       String? privateKeyPath,
-      bool hasKeyPassphrase});
+      bool hasKeyPassphrase,
+      @JsonKey(includeFromJson: false, includeToJson: false) String? password});
 }
 
 /// @nodoc
@@ -73,6 +78,7 @@ class _$SSHConfigCopyWithImpl<$Res, $Val extends SSHConfig>
     Object? username = null,
     Object? privateKeyPath = freezed,
     Object? hasKeyPassphrase = null,
+    Object? password = freezed,
   }) {
     return _then(_value.copyWith(
       host: null == host
@@ -95,6 +101,10 @@ class _$SSHConfigCopyWithImpl<$Res, $Val extends SSHConfig>
           ? _value.hasKeyPassphrase
           : hasKeyPassphrase // ignore: cast_nullable_to_non_nullable
               as bool,
+      password: freezed == password
+          ? _value.password
+          : password // ignore: cast_nullable_to_non_nullable
+              as String?,
     ) as $Val);
   }
 }
@@ -112,7 +122,8 @@ abstract class _$$SSHConfigImplCopyWith<$Res>
       int port,
       String username,
       String? privateKeyPath,
-      bool hasKeyPassphrase});
+      bool hasKeyPassphrase,
+      @JsonKey(includeFromJson: false, includeToJson: false) String? password});
 }
 
 /// @nodoc
@@ -133,6 +144,7 @@ class __$$SSHConfigImplCopyWithImpl<$Res>
     Object? username = null,
     Object? privateKeyPath = freezed,
     Object? hasKeyPassphrase = null,
+    Object? password = freezed,
   }) {
     return _then(_$SSHConfigImpl(
       host: null == host
@@ -155,6 +167,10 @@ class __$$SSHConfigImplCopyWithImpl<$Res>
           ? _value.hasKeyPassphrase
           : hasKeyPassphrase // ignore: cast_nullable_to_non_nullable
               as bool,
+      password: freezed == password
+          ? _value.password
+          : password // ignore: cast_nullable_to_non_nullable
+              as String?,
     ));
   }
 }
@@ -167,7 +183,8 @@ class _$SSHConfigImpl implements _SSHConfig {
       this.port = 22,
       required this.username,
       this.privateKeyPath,
-      this.hasKeyPassphrase = false});
+      this.hasKeyPassphrase = false,
+      @JsonKey(includeFromJson: false, includeToJson: false) this.password});
 
   factory _$SSHConfigImpl.fromJson(Map<String, dynamic> json) =>
       _$$SSHConfigImplFromJson(json);
@@ -189,9 +206,14 @@ class _$SSHConfigImpl implements _SSHConfig {
   @JsonKey()
   final bool hasKeyPassphrase;
 
+  /// SSH login password (in memory only; never written to JSON).
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? password;
+
   @override
   String toString() {
-    return 'SSHConfig(host: $host, port: $port, username: $username, privateKeyPath: $privateKeyPath, hasKeyPassphrase: $hasKeyPassphrase)';
+    return 'SSHConfig(host: $host, port: $port, username: $username, privateKeyPath: $privateKeyPath, hasKeyPassphrase: $hasKeyPassphrase, password: $password)';
   }
 
   @override
@@ -206,13 +228,15 @@ class _$SSHConfigImpl implements _SSHConfig {
             (identical(other.privateKeyPath, privateKeyPath) ||
                 other.privateKeyPath == privateKeyPath) &&
             (identical(other.hasKeyPassphrase, hasKeyPassphrase) ||
-                other.hasKeyPassphrase == hasKeyPassphrase));
+                other.hasKeyPassphrase == hasKeyPassphrase) &&
+            (identical(other.password, password) ||
+                other.password == password));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
-      runtimeType, host, port, username, privateKeyPath, hasKeyPassphrase);
+  int get hashCode => Object.hash(runtimeType, host, port, username,
+      privateKeyPath, hasKeyPassphrase, password);
 
   /// Create a copy of SSHConfig
   /// with the given fields replaced by the non-null parameter values.
@@ -236,7 +260,9 @@ abstract class _SSHConfig implements SSHConfig {
       final int port,
       required final String username,
       final String? privateKeyPath,
-      final bool hasKeyPassphrase}) = _$SSHConfigImpl;
+      final bool hasKeyPassphrase,
+      @JsonKey(includeFromJson: false, includeToJson: false)
+      final String? password}) = _$SSHConfigImpl;
 
   factory _SSHConfig.fromJson(Map<String, dynamic> json) =
       _$SSHConfigImpl.fromJson;
@@ -255,6 +281,11 @@ abstract class _SSHConfig implements SSHConfig {
   /// Key passphrase stored via [CredentialService], not serialized here.
   @override
   bool get hasKeyPassphrase;
+
+  /// SSH login password (in memory only; never written to JSON).
+  @override
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  String? get password;
 
   /// Create a copy of SSHConfig
   /// with the given fields replaced by the non-null parameter values.

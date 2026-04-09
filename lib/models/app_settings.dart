@@ -14,6 +14,10 @@ class AppSettings with _$AppSettings {
     @Default(500) int gridPageSize,
     @Default('NULL') String gridNullDisplay,
     @Default('yyyy-MM-dd HH:mm:ss') String gridDateFormat,
+    /// HTTP proxy URL for future driver HTTP modes (e.g. `http://host:8888`).
+    @Default('') String httpProxyUrl,
+    /// Reserved for shortcut customization (display / future keymap).
+    @Default(true) bool showKeyboardShortcutHints,
   }) = _AppSettings;
 
   factory AppSettings.fromJson(Map<String, dynamic> json) =>

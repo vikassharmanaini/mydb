@@ -11,6 +11,7 @@ import 'package:mydb/models/database_type.dart';
 import 'package:mydb/models/result_page.dart';
 import 'package:mydb/models/schema_metadata.dart';
 import 'package:mydb/models/ssl_config.dart' as app_ssl;
+import 'package:mydb/services/ssh_tunnel_service.dart';
 import 'package:postgres/postgres.dart' as pg;
 
 /// PostgreSQL [DatabaseDriver] using package `postgres`.
@@ -26,6 +27,7 @@ class PostgresDriver implements DatabaseDriver {
   pg.Connection? _conn;
   pg.Endpoint? _endpoint;
   pg.ConnectionSettings? _settings;
+  SSHTunnelSession? _sshTunnel;
 
   int _txDepth = 0;
   int _cursorSeq = 0;
@@ -45,15 +47,25 @@ class PostgresDriver implements DatabaseDriver {
     if (profile.type != DatabaseType.postgres) {
       throw ArgumentError.value(profile.type, 'profile.type', 'expected postgres');
     }
-    if (profile.ssh != null) {
-      throw UnsupportedError(
-        'SSH tunnel is not implemented yet. Remove SSH from the profile or implement SSHTunnelService.',
-      );
-    }
     await disconnect();
-    final port = profile.port <= 0 ? profile.type.defaultPort : profile.port;
+    int port = profile.port <= 0 ? profile.type.defaultPort : profile.port;
+    String host = profile.host;
+    if (profile.ssh != null) {
+      try {
+        _sshTunnel = await SSHTunnelSession.open(
+          ssh: profile.ssh!,
+          remoteHost: profile.host,
+          remotePort: port,
+        );
+      } catch (e, st) {
+        _events.add(ConnectionEvent.error(e.toString(), st.toString()));
+        rethrow;
+      }
+      host = InternetAddress.loopbackIPv4.address;
+      port = _sshTunnel!.localPort;
+    }
     _endpoint = pg.Endpoint(
-      host: profile.host,
+      host: host,
       port: port,
       database: profile.database,
       username: profile.username,
@@ -89,6 +101,15 @@ class PostgresDriver implements DatabaseDriver {
         /* ignore */
       }
       _events.add(const ConnectionEvent.disconnected());
+    }
+    final SSHTunnelSession? t = _sshTunnel;
+    _sshTunnel = null;
+    if (t != null) {
+      try {
+        await t.close();
+      } catch (_) {
+        /* ignore */
+      }
     }
   }
 

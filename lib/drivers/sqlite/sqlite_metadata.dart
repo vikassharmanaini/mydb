@@ -179,9 +179,8 @@ ORDER BY name
       DatabaseObjectSequence() => Future<String>.value(
           '-- SQLite uses AUTOINCREMENT instead of sequences.',
         ),
-      DatabaseObjectTrigger() => Future<String>.value(
-          '-- Trigger DDL not generated.',
-        ),
+      DatabaseObjectTrigger(:final schema, :final table, :final name) =>
+        _ddlFromMaster(db, schema, name, 'trigger', forTable: table),
       DatabaseObjectProcedure() => Future<String>.value(
           '-- SQLite does not support stored procedures.',
         ),

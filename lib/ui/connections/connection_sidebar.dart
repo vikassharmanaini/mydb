@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mydb/models/connection_profile.dart';
 import 'package:mydb/models/database_type.dart';
 import 'package:mydb/state/connection_providers.dart';
@@ -27,6 +28,11 @@ class ConnectionSidebar extends ConsumerWidget {
                   'Connections',
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
+              ),
+              IconButton(
+                tooltip: 'Settings',
+                onPressed: () => context.push('/settings'),
+                icon: const Icon(Icons.settings_outlined),
               ),
               IconButton(
                 tooltip: 'New connection',

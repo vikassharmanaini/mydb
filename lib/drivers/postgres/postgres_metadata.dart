@@ -252,15 +252,12 @@ ORDER BY routine_name
         ),
       DatabaseObjectIndex(:final schema, :final table, :final name) =>
         _indexDDL(s, schema, table, name),
-      DatabaseObjectForeignKey() => Future<String>.value(
-          '-- Foreign key DDL not generated.',
-        ),
-      DatabaseObjectSequence(:final schema, :final name) => Future<String>.value(
-          '-- Sequence ${quoteIdent(schema)}.${quoteIdent(name)}: not generated.',
-        ),
-      DatabaseObjectTrigger() => Future<String>.value(
-          '-- Trigger DDL not generated.',
-        ),
+      DatabaseObjectForeignKey(:final schema, :final table, :final name) =>
+        _foreignKeyDDL(s, schema, table, name),
+      DatabaseObjectSequence(:final schema, :final name) =>
+        _sequenceDDL(s, schema, name),
+      DatabaseObjectTrigger(:final schema, :final table, :final name) =>
+        _triggerDDL(s, schema, table, name),
       DatabaseObjectProcedure() => Future<String>.value(
           '-- Procedure DDL not generated.',
         ),
@@ -338,5 +335,141 @@ WHERE schemaname = @schema AND tablename = @table AND indexname = @name
       return '-- Index ${quoteIdent(name)} not found.';
     }
     return r.first[0]! as String;
+  }
+
+  static Future<String> _foreignKeyDDL(
+    pg.Session s,
+    String schema,
+    String table,
+    String constraintName,
+  ) async {
+    final r = await s.execute(
+      pg.Sql.named(
+        '''
+SELECT kcu.column_name,
+       ccu.table_schema AS fs,
+       ccu.table_name AS ft,
+       ccu.column_name AS fc,
+       rc.update_rule,
+       rc.delete_rule
+FROM information_schema.table_constraints AS tc
+JOIN information_schema.key_column_usage AS kcu
+  ON tc.constraint_name = kcu.constraint_name
+ AND tc.table_schema = kcu.table_schema
+JOIN information_schema.constraint_column_usage AS ccu
+  ON ccu.constraint_name = tc.constraint_name
+ AND ccu.table_schema = tc.table_schema
+JOIN information_schema.referential_constraints AS rc
+  ON rc.constraint_name = tc.constraint_name
+ AND rc.constraint_schema = tc.table_schema
+WHERE tc.constraint_type = 'FOREIGN KEY'
+  AND tc.table_schema = @schema
+  AND tc.table_name = @table
+  AND tc.constraint_name = @cname
+ORDER BY kcu.ordinal_position
+''',
+      ),
+      parameters: <String, Object?>{
+        'schema': schema,
+        'table': table,
+        'cname': constraintName,
+      },
+    );
+    if (r.isEmpty) {
+      return '-- Foreign key ${quoteIdent(constraintName)} not found.';
+    }
+    final List<String> localCols = <String>[];
+    final List<String> refCols = <String>[];
+    String? refSchema;
+    String? refTable;
+    String? upd;
+    String? del;
+    for (final pg.ResultRow row in r) {
+      localCols.add(quoteIdent(row[0]! as String));
+      refSchema = row[1]! as String;
+      refTable = row[2]! as String;
+      refCols.add(quoteIdent(row[3]! as String));
+      upd = row[4] as String?;
+      del = row[5] as String?;
+    }
+    final StringBuffer sb = StringBuffer()
+      ..write(
+        'ALTER TABLE ${quoteIdent(schema)}.${quoteIdent(table)} '
+        'ADD CONSTRAINT ${quoteIdent(constraintName)} '
+        'FOREIGN KEY (${localCols.join(', ')}) '
+        'REFERENCES ${quoteIdent(refSchema!)}.${quoteIdent(refTable!)} '
+        '(${refCols.join(', ')})',
+      );
+    if (del != null && del != 'NO ACTION') {
+      sb.write(' ON DELETE $del');
+    }
+    if (upd != null && upd != 'NO ACTION') {
+      sb.write(' ON UPDATE $upd');
+    }
+    sb.writeln(';');
+    return sb.toString();
+  }
+
+  static Future<String> _sequenceDDL(
+    pg.Session s,
+    String schema,
+    String name,
+  ) async {
+    final r = await s.execute(
+      pg.Sql.named(
+        '''
+SELECT start_value::text, minimum_value::text, maximum_value::text,
+       increment::text, cycle_option
+FROM information_schema.sequences
+WHERE sequence_schema = @schema AND sequence_name = @name
+''',
+      ),
+      parameters: <String, Object?>{'schema': schema, 'name': name},
+    );
+    if (r.isEmpty) {
+      return '-- Sequence ${quoteIdent(schema)}.${quoteIdent(name)} not found.';
+    }
+    final pg.ResultRow row = r.first;
+    final String start = row[0]! as String;
+    final String minV = row[1]! as String;
+    final String maxV = row[2]! as String;
+    final String inc = row[3]! as String;
+    final String cycle = row[4]! as String;
+    return 'CREATE SEQUENCE ${quoteIdent(schema)}.${quoteIdent(name)} '
+        'INCREMENT BY $inc MINVALUE $minV MAXVALUE $maxV '
+        'START WITH $start '
+        '${cycle == 'YES' ? 'CYCLE' : 'NO CYCLE'};';
+  }
+
+  static Future<String> _triggerDDL(
+    pg.Session s,
+    String schema,
+    String table,
+    String triggerName,
+  ) async {
+    final r = await s.execute(
+      pg.Sql.named(
+        '''
+SELECT pg_get_triggerdef(t.oid, true)
+FROM pg_trigger t
+JOIN pg_class c ON c.oid = t.tgrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE NOT t.tgisinternal
+  AND n.nspname = @schema
+  AND c.relname = @table
+  AND t.tgname = @name
+''',
+      ),
+      parameters: <String, Object?>{
+        'schema': schema,
+        'table': table,
+        'name': triggerName,
+      },
+    );
+    if (r.isEmpty) {
+      return '-- Trigger ${quoteIdent(triggerName)} not found.';
+    }
+    final String? def = r.first[0] as String?;
+    return def ?? '-- Trigger ${quoteIdent(triggerName)}: no definition.';
   }
 }

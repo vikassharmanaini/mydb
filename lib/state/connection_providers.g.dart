@@ -44,7 +44,7 @@ final connectionProfileRepositoryProvider =
 typedef ConnectionProfileRepositoryRef
     = FutureProviderRef<ConnectionProfileRepository>;
 String _$savedConnectionProfilesHash() =>
-    r'43cc84d072f50dabcfde86b244fca65eb3143a89';
+    r'25b517901cbaeb7961e8c654bf8f7253641a60a3';
 
 /// Saved connection profiles (passwords are never stored in Hive).
 ///

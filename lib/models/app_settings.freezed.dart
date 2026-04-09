@@ -29,6 +29,12 @@ mixin _$AppSettings {
   String get gridNullDisplay => throw _privateConstructorUsedError;
   String get gridDateFormat => throw _privateConstructorUsedError;
 
+  /// HTTP proxy URL for future driver HTTP modes (e.g. `http://host:8888`).
+  String get httpProxyUrl => throw _privateConstructorUsedError;
+
+  /// Reserved for shortcut customization (display / future keymap).
+  bool get showKeyboardShortcutHints => throw _privateConstructorUsedError;
+
   /// Serializes this AppSettings to a JSON map.
   Map<String, dynamic> toJson() => throw _privateConstructorUsedError;
 
@@ -53,7 +59,9 @@ abstract class $AppSettingsCopyWith<$Res> {
       bool editorAutocomplete,
       int gridPageSize,
       String gridNullDisplay,
-      String gridDateFormat});
+      String gridDateFormat,
+      String httpProxyUrl,
+      bool showKeyboardShortcutHints});
 }
 
 /// @nodoc
@@ -79,6 +87,8 @@ class _$AppSettingsCopyWithImpl<$Res, $Val extends AppSettings>
     Object? gridPageSize = null,
     Object? gridNullDisplay = null,
     Object? gridDateFormat = null,
+    Object? httpProxyUrl = null,
+    Object? showKeyboardShortcutHints = null,
   }) {
     return _then(_value.copyWith(
       darkMode: null == darkMode
@@ -113,6 +123,14 @@ class _$AppSettingsCopyWithImpl<$Res, $Val extends AppSettings>
           ? _value.gridDateFormat
           : gridDateFormat // ignore: cast_nullable_to_non_nullable
               as String,
+      httpProxyUrl: null == httpProxyUrl
+          ? _value.httpProxyUrl
+          : httpProxyUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+      showKeyboardShortcutHints: null == showKeyboardShortcutHints
+          ? _value.showKeyboardShortcutHints
+          : showKeyboardShortcutHints // ignore: cast_nullable_to_non_nullable
+              as bool,
     ) as $Val);
   }
 }
@@ -133,7 +151,9 @@ abstract class _$$AppSettingsImplCopyWith<$Res>
       bool editorAutocomplete,
       int gridPageSize,
       String gridNullDisplay,
-      String gridDateFormat});
+      String gridDateFormat,
+      String httpProxyUrl,
+      bool showKeyboardShortcutHints});
 }
 
 /// @nodoc
@@ -157,6 +177,8 @@ class __$$AppSettingsImplCopyWithImpl<$Res>
     Object? gridPageSize = null,
     Object? gridNullDisplay = null,
     Object? gridDateFormat = null,
+    Object? httpProxyUrl = null,
+    Object? showKeyboardShortcutHints = null,
   }) {
     return _then(_$AppSettingsImpl(
       darkMode: null == darkMode
@@ -191,6 +213,14 @@ class __$$AppSettingsImplCopyWithImpl<$Res>
           ? _value.gridDateFormat
           : gridDateFormat // ignore: cast_nullable_to_non_nullable
               as String,
+      httpProxyUrl: null == httpProxyUrl
+          ? _value.httpProxyUrl
+          : httpProxyUrl // ignore: cast_nullable_to_non_nullable
+              as String,
+      showKeyboardShortcutHints: null == showKeyboardShortcutHints
+          ? _value.showKeyboardShortcutHints
+          : showKeyboardShortcutHints // ignore: cast_nullable_to_non_nullable
+              as bool,
     ));
   }
 }
@@ -206,7 +236,9 @@ class _$AppSettingsImpl implements _AppSettings {
       this.editorAutocomplete = true,
       this.gridPageSize = 500,
       this.gridNullDisplay = 'NULL',
-      this.gridDateFormat = 'yyyy-MM-dd HH:mm:ss'});
+      this.gridDateFormat = 'yyyy-MM-dd HH:mm:ss',
+      this.httpProxyUrl = '',
+      this.showKeyboardShortcutHints = true});
 
   factory _$AppSettingsImpl.fromJson(Map<String, dynamic> json) =>
       _$$AppSettingsImplFromJson(json);
@@ -236,9 +268,19 @@ class _$AppSettingsImpl implements _AppSettings {
   @JsonKey()
   final String gridDateFormat;
 
+  /// HTTP proxy URL for future driver HTTP modes (e.g. `http://host:8888`).
+  @override
+  @JsonKey()
+  final String httpProxyUrl;
+
+  /// Reserved for shortcut customization (display / future keymap).
+  @override
+  @JsonKey()
+  final bool showKeyboardShortcutHints;
+
   @override
   String toString() {
-    return 'AppSettings(darkMode: $darkMode, editorFontSize: $editorFontSize, editorTabSize: $editorTabSize, editorLineWrap: $editorLineWrap, editorAutocomplete: $editorAutocomplete, gridPageSize: $gridPageSize, gridNullDisplay: $gridNullDisplay, gridDateFormat: $gridDateFormat)';
+    return 'AppSettings(darkMode: $darkMode, editorFontSize: $editorFontSize, editorTabSize: $editorTabSize, editorLineWrap: $editorLineWrap, editorAutocomplete: $editorAutocomplete, gridPageSize: $gridPageSize, gridNullDisplay: $gridNullDisplay, gridDateFormat: $gridDateFormat, httpProxyUrl: $httpProxyUrl, showKeyboardShortcutHints: $showKeyboardShortcutHints)';
   }
 
   @override
@@ -261,7 +303,12 @@ class _$AppSettingsImpl implements _AppSettings {
             (identical(other.gridNullDisplay, gridNullDisplay) ||
                 other.gridNullDisplay == gridNullDisplay) &&
             (identical(other.gridDateFormat, gridDateFormat) ||
-                other.gridDateFormat == gridDateFormat));
+                other.gridDateFormat == gridDateFormat) &&
+            (identical(other.httpProxyUrl, httpProxyUrl) ||
+                other.httpProxyUrl == httpProxyUrl) &&
+            (identical(other.showKeyboardShortcutHints,
+                    showKeyboardShortcutHints) ||
+                other.showKeyboardShortcutHints == showKeyboardShortcutHints));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -275,7 +322,9 @@ class _$AppSettingsImpl implements _AppSettings {
       editorAutocomplete,
       gridPageSize,
       gridNullDisplay,
-      gridDateFormat);
+      gridDateFormat,
+      httpProxyUrl,
+      showKeyboardShortcutHints);
 
   /// Create a copy of AppSettings
   /// with the given fields replaced by the non-null parameter values.
@@ -302,7 +351,9 @@ abstract class _AppSettings implements AppSettings {
       final bool editorAutocomplete,
       final int gridPageSize,
       final String gridNullDisplay,
-      final String gridDateFormat}) = _$AppSettingsImpl;
+      final String gridDateFormat,
+      final String httpProxyUrl,
+      final bool showKeyboardShortcutHints}) = _$AppSettingsImpl;
 
   factory _AppSettings.fromJson(Map<String, dynamic> json) =
       _$AppSettingsImpl.fromJson;
@@ -323,6 +374,14 @@ abstract class _AppSettings implements AppSettings {
   String get gridNullDisplay;
   @override
   String get gridDateFormat;
+
+  /// HTTP proxy URL for future driver HTTP modes (e.g. `http://host:8888`).
+  @override
+  String get httpProxyUrl;
+
+  /// Reserved for shortcut customization (display / future keymap).
+  @override
+  bool get showKeyboardShortcutHints;
 
   /// Create a copy of AppSettings
   /// with the given fields replaced by the non-null parameter values.

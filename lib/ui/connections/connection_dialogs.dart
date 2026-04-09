@@ -1,9 +1,12 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mydb/models/connection_pool_config.dart';
 import 'package:mydb/models/connection_profile.dart';
 import 'package:mydb/models/database_type.dart';
+import 'package:mydb/models/ssh_config.dart';
 import 'package:mydb/models/ssl_config.dart';
+import 'package:mydb/services/connection_test_service.dart';
 import 'package:mydb/services/credential_service.dart';
 import 'package:mydb/state/connection_providers.dart';
 import 'package:mydb/utils/connection_url_parser.dart';
@@ -417,8 +420,17 @@ class _ConnectionFormDialogState extends State<_ConnectionFormDialog> {
   final _database = TextEditingController();
   final _user = TextEditingController();
   final _password = TextEditingController();
+  final _sslCa = TextEditingController();
+  final _sshHost = TextEditingController();
+  final _sshPort = TextEditingController(text: '22');
+  final _sshUser = TextEditingController();
+  final _sshPass = TextEditingController();
+  final _sshKey = TextEditingController();
+  final _poolMin = TextEditingController(text: '1');
+  final _poolMax = TextEditingController(text: '10');
   DatabaseType _type = DatabaseType.postgres;
-  bool _useTls = true;
+  SslMode _sslMode = SslMode.require;
+  bool _sshEnabled = false;
   bool _rememberPassword = false;
   bool _busy = false;
 
@@ -430,6 +442,14 @@ class _ConnectionFormDialogState extends State<_ConnectionFormDialog> {
     _database.dispose();
     _user.dispose();
     _password.dispose();
+    _sslCa.dispose();
+    _sshHost.dispose();
+    _sshPort.dispose();
+    _sshUser.dispose();
+    _sshPass.dispose();
+    _sshKey.dispose();
+    _poolMin.dispose();
+    _poolMax.dispose();
     super.dispose();
   }
 
@@ -574,10 +594,116 @@ class _ConnectionFormDialogState extends State<_ConnectionFormDialog> {
                     obscureText: true,
                   ),
                   const SizedBox(height: 12),
-                  SwitchListTile(
-                    title: const Text('Use TLS / SSL'),
-                    value: _useTls,
-                    onChanged: (bool v) => setState(() => _useTls = v),
+                  DropdownButtonFormField<SslMode>(
+                    decoration: const InputDecoration(
+                      labelText: 'SSL mode',
+                      border: OutlineInputBorder(),
+                    ),
+                    value: _sslMode,
+                    items: SslMode.values
+                        .map(
+                          (SslMode m) => DropdownMenuItem<SslMode>(
+                            value: m,
+                            child: Text(m.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (SslMode? v) {
+                      if (v != null) {
+                        setState(() => _sslMode = v);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _sslCa,
+                    decoration: const InputDecoration(
+                      labelText: 'CA certificate path (optional)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('SSH tunnel to database host'),
+                    value: _sshEnabled,
+                    onChanged: (bool? v) =>
+                        setState(() => _sshEnabled = v ?? false),
+                  ),
+                  if (_sshEnabled) ...<Widget>[
+                    TextFormField(
+                      controller: _sshHost,
+                      decoration: const InputDecoration(
+                        labelText: 'SSH host',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _sshPort,
+                      decoration: const InputDecoration(
+                        labelText: 'SSH port',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _sshUser,
+                      decoration: const InputDecoration(
+                        labelText: 'SSH username',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _sshPass,
+                      decoration: const InputDecoration(
+                        labelText: 'SSH password (optional if using key)',
+                        border: OutlineInputBorder(),
+                      ),
+                      obscureText: true,
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _sshKey,
+                      decoration: InputDecoration(
+                        labelText: 'SSH private key path',
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.folder_open),
+                          onPressed: () async {
+                            final FilePickerResult? r =
+                                await FilePicker.platform.pickFiles(
+                              type: FileType.any,
+                            );
+                            final String? path = r?.files.single.path;
+                            if (path != null) {
+                              setState(() => _sshKey.text = path);
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _poolMin,
+                    decoration: const InputDecoration(
+                      labelText: 'Pool min connections (Postgres roadmap)',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _poolMax,
+                    decoration: const InputDecoration(
+                      labelText: 'Pool max connections',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
                   ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
@@ -596,6 +722,10 @@ class _ConnectionFormDialogState extends State<_ConnectionFormDialog> {
         TextButton(
           onPressed: _busy ? null : () => Navigator.pop(context),
           child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: _busy ? null : _testOnly,
+          child: const Text('Test'),
         ),
         TextButton(
           onPressed: _busy ? null : _saveOnly,
@@ -620,7 +750,26 @@ class _ConnectionFormDialogState extends State<_ConnectionFormDialog> {
       return null;
     }
     return SSLConfig(
-      mode: _useTls ? SslMode.require : SslMode.disable,
+      mode: _sslMode,
+      caCertPath:
+          _sslCa.text.trim().isEmpty ? null : _sslCa.text.trim(),
+    );
+  }
+
+  SSHConfig? _sshConfig() {
+    if (_isSqlite || !_sshEnabled) {
+      return null;
+    }
+    if (_sshHost.text.trim().isEmpty || _sshUser.text.trim().isEmpty) {
+      return null;
+    }
+    return SSHConfig(
+      host: _sshHost.text.trim(),
+      port: int.tryParse(_sshPort.text.trim()) ?? 22,
+      username: _sshUser.text.trim(),
+      privateKeyPath:
+          _sshKey.text.trim().isEmpty ? null : _sshKey.text.trim(),
+      password: _sshPass.text.isEmpty ? null : _sshPass.text,
     );
   }
 
@@ -638,8 +787,43 @@ class _ConnectionFormDialogState extends State<_ConnectionFormDialog> {
           ? null
           : (_password.text.isEmpty ? null : _password.text),
       ssl: _sslForType(),
+      ssh: _sshConfig(),
+      pool: ConnectionPoolConfig(
+        minSize: int.tryParse(_poolMin.text.trim()) ?? 1,
+        maxSize: int.tryParse(_poolMax.text.trim()) ?? 10,
+      ),
       createdAt: DateTime.now().toUtc(),
     );
+  }
+
+  Future<void> _testOnly() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await testConnectionProfile(_buildProfile());
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connection succeeded.')),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Connection test failed: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
   }
 
   Future<void> _saveOnly() async {

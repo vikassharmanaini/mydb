@@ -17,6 +17,9 @@ _$AppSettingsImpl _$$AppSettingsImplFromJson(Map<String, dynamic> json) =>
       gridNullDisplay: json['gridNullDisplay'] as String? ?? 'NULL',
       gridDateFormat:
           json['gridDateFormat'] as String? ?? 'yyyy-MM-dd HH:mm:ss',
+      httpProxyUrl: json['httpProxyUrl'] as String? ?? '',
+      showKeyboardShortcutHints:
+          json['showKeyboardShortcutHints'] as bool? ?? true,
     );
 
 Map<String, dynamic> _$$AppSettingsImplToJson(_$AppSettingsImpl instance) =>
@@ -29,4 +32,6 @@ Map<String, dynamic> _$$AppSettingsImplToJson(_$AppSettingsImpl instance) =>
       'gridPageSize': instance.gridPageSize,
       'gridNullDisplay': instance.gridNullDisplay,
       'gridDateFormat': instance.gridDateFormat,
+      'httpProxyUrl': instance.httpProxyUrl,
+      'showKeyboardShortcutHints': instance.showKeyboardShortcutHints,
     };

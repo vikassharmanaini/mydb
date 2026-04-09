@@ -13,6 +13,8 @@ class SSHConfig with _$SSHConfig {
     String? privateKeyPath,
     /// Key passphrase stored via [CredentialService], not serialized here.
     @Default(false) bool hasKeyPassphrase,
+    /// SSH login password (in memory only; never written to JSON).
+    @JsonKey(includeFromJson: false, includeToJson: false) String? password,
   }) = _SSHConfig;
 
   factory SSHConfig.fromJson(Map<String, dynamic> json) =>

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:mydb/drivers/connection_event.dart';
@@ -10,6 +11,7 @@ import 'package:mydb/models/database_type.dart';
 import 'package:mydb/models/result_page.dart';
 import 'package:mydb/models/schema_metadata.dart';
 import 'package:mydb/models/ssl_config.dart' as app_ssl;
+import 'package:mydb/services/ssh_tunnel_service.dart';
 import 'package:mysql_client/mysql_client.dart';
 
 /// MySQL / MariaDB [DatabaseDriver] via `mysql_client`.
@@ -20,6 +22,7 @@ class MySQLDriver implements DatabaseDriver {
       StreamController<ConnectionEvent>.broadcast();
 
   MySQLConnection? _conn;
+  SSHTunnelSession? _sshTunnel;
   int _txDepth = 0;
   int? _threadId;
 
@@ -45,14 +48,24 @@ class MySQLDriver implements DatabaseDriver {
     if (profile.type != DatabaseType.mysql) {
       throw ArgumentError.value(profile.type, 'profile.type', 'expected mysql');
     }
-    if (profile.ssh != null) {
-      throw UnsupportedError(
-        'SSH tunnel is not implemented yet. Remove SSH from the profile.',
-      );
-    }
     await disconnect();
-    final port = profile.port <= 0 ? profile.type.defaultPort : profile.port;
-    _host = profile.host;
+    int port = profile.port <= 0 ? profile.type.defaultPort : profile.port;
+    String host = profile.host;
+    if (profile.ssh != null) {
+      try {
+        _sshTunnel = await SSHTunnelSession.open(
+          ssh: profile.ssh!,
+          remoteHost: profile.host,
+          remotePort: port,
+        );
+      } catch (e, st) {
+        _events.add(ConnectionEvent.error(e.toString(), st.toString()));
+        rethrow;
+      }
+      host = InternetAddress.loopbackIPv4.address;
+      port = _sshTunnel!.localPort;
+    }
+    _host = host;
     _port = port;
     _user = profile.username;
     _password = profile.password ?? '';
@@ -60,7 +73,7 @@ class MySQLDriver implements DatabaseDriver {
     _secure = _useTls(profile);
 
     _conn = await MySQLConnection.createConnection(
-      host: profile.host,
+      host: host,
       port: port,
       userName: profile.username,
       password: _password,
@@ -119,6 +132,15 @@ class MySQLDriver implements DatabaseDriver {
         /* ignore */
       }
       _events.add(const ConnectionEvent.disconnected());
+    }
+    final SSHTunnelSession? t = _sshTunnel;
+    _sshTunnel = null;
+    if (t != null) {
+      try {
+        await t.close();
+      } catch (_) {
+        /* ignore */
+      }
     }
   }
 

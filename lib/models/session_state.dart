@@ -1,18 +1,30 @@
 import 'dart:convert';
 
 /// Serializable editor session for crash recovery (tabs + SQL buffers).
+///
+/// On-disk schema: `agents/SESSION.md`.
 final class SessionState {
   const SessionState({
     this.tabs = const <EditorTabSnapshot>[],
     this.activeTabId,
+    this.scratchSql = '',
+    this.scratchConnectionId,
   });
 
   final List<EditorTabSnapshot> tabs;
   final String? activeTabId;
 
+  /// Single-editor SQL buffer (used when [tabs] is empty or as fallback).
+  final String scratchSql;
+
+  /// Which connection profile [scratchSql] belongs to.
+  final String? scratchConnectionId;
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'tabs': tabs.map((EditorTabSnapshot e) => e.toJson()).toList(),
         'activeTabId': activeTabId,
+        'scratchSql': scratchSql,
+        'scratchConnectionId': scratchConnectionId,
       };
 
   factory SessionState.fromJson(Map<String, dynamic> json) {
@@ -28,6 +40,8 @@ final class SessionState {
     return SessionState(
       tabs: out,
       activeTabId: json['activeTabId'] as String?,
+      scratchSql: json['scratchSql'] as String? ?? '',
+      scratchConnectionId: json['scratchConnectionId'] as String?,
     );
   }
 
