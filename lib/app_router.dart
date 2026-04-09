@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:mydb/models/connection_profile.dart';
 import 'package:mydb/state/connection_providers.dart';
 import 'package:mydb/ui/layout/app_shell.dart';
+import 'package:mydb/ui/query/query_workspace.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 part 'app_router.g.dart';
@@ -41,54 +42,73 @@ class _HomeBody extends ConsumerWidget {
     final Set<String> live = ref.watch(liveConnectionsProvider);
     final bool connected = sel != null && live.contains(sel);
 
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: <Widget>[
-          Text(
-            'DBStudio',
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
-          const SizedBox(height: 16),
-          profilesAsync.when(
-            loading: () => Text(
-              'Loading connections…',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-            ),
-            error: (Object e, StackTrace _) => Text(
-              'Connection list error: $e',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-            data: (List<ConnectionProfile> profiles) {
-              String? name;
-              if (sel != null) {
-                for (final ConnectionProfile p in profiles) {
-                  if (p.id == sel) {
-                    name = p.name;
-                    break;
-                  }
-                }
-              }
-              if (name != null) {
-                return Text(
-                  connected
-                      ? 'Active: $name'
-                      : 'Selected: $name (not connected)',
-                  style: Theme.of(context).textTheme.titleMedium,
-                );
-              }
-              return Text(
-                'Add a connection in the sidebar to get started.',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-              );
-            },
-          ),
-        ],
+    return profilesAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (Object e, StackTrace _) => Center(
+        child: Text(
+          'Connection list error: $e',
+          style: TextStyle(color: Theme.of(context).colorScheme.error),
+        ),
       ),
+      data: (List<ConnectionProfile> profiles) {
+        String? name;
+        if (sel != null) {
+          for (final ConnectionProfile p in profiles) {
+            if (p.id == sel) {
+              name = p.name;
+              break;
+            }
+          }
+        }
+        if (sel == null) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Text(
+                  'DBStudio',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Add or select a connection in the sidebar to get started.',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        }
+        if (!connected) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Text(
+                  'DBStudio',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  name != null
+                      ? '"$name" is selected but not connected.\nConnect from the sidebar.'
+                      : 'Connect from the sidebar to run queries.',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          );
+        }
+        return QueryWorkspace(
+          key: ValueKey<String>(sel),
+          connectionId: sel,
+        );
+      },
     );
   }
 }
