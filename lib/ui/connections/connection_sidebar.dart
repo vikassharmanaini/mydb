@@ -44,6 +44,14 @@ class ConnectionSidebar extends ConsumerWidget {
             label: const Text('Add connection'),
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: OutlinedButton.icon(
+            onPressed: () => showConnectFromUrlDialog(context, ref),
+            icon: const Icon(Icons.link, size: 18),
+            label: const Text('Connect from URL'),
+          ),
+        ),
         const SizedBox(height: 8),
         Expanded(
           child: profilesAsync.when(

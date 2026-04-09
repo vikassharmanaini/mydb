@@ -6,6 +6,7 @@ import 'package:mydb/models/database_type.dart';
 import 'package:mydb/models/ssl_config.dart';
 import 'package:mydb/services/credential_service.dart';
 import 'package:mydb/state/connection_providers.dart';
+import 'package:mydb/utils/connection_url_parser.dart';
 import 'package:uuid/uuid.dart';
 
 const Uuid _uuid = Uuid();
@@ -35,6 +36,13 @@ Future<void> showConnectDialog(
       ref: ref,
       profile: profile,
     ),
+  );
+}
+
+Future<void> showConnectFromUrlDialog(BuildContext context, WidgetRef ref) {
+  return showDialog<void>(
+    context: context,
+    builder: (BuildContext ctx) => _UrlConnectDialog(ref: ref),
   );
 }
 
@@ -168,6 +176,210 @@ class _QuickConnectDialogState extends State<_QuickConnectDialog> {
         SnackBar(
           content: Text('Connected to ${_profile.name}'),
         ),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Connection failed: $e'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+}
+
+class _UrlConnectDialog extends StatefulWidget {
+  const _UrlConnectDialog({required this.ref});
+
+  final WidgetRef ref;
+
+  @override
+  State<_UrlConnectDialog> createState() => _UrlConnectDialogState();
+}
+
+class _UrlConnectDialogState extends State<_UrlConnectDialog> {
+  WidgetRef get _ref => widget.ref;
+  final TextEditingController _url = TextEditingController();
+  final TextEditingController _name = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  bool _saveConnection = true;
+  bool _rememberPassword = true;
+  bool _busy = false;
+  String? _parseError;
+
+  @override
+  void dispose() {
+    _url.dispose();
+    _name.dispose();
+    super.dispose();
+  }
+
+  ConnectionProfile? _tryParseProfile() {
+    setState(() => _parseError = null);
+    try {
+      return connectionProfileFromUrl(
+        _url.text,
+        id: _uuid.v4(),
+        createdAt: DateTime.now().toUtc(),
+        displayName: _name.text.trim().isEmpty ? null : _name.text.trim(),
+      );
+    } on FormatException catch (e) {
+      setState(() => _parseError = e.message);
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Connect from URL'),
+      content: SizedBox(
+        width: 440,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                TextFormField(
+                  controller: _url,
+                  decoration: const InputDecoration(
+                    labelText: 'Connection URL',
+                    hintText:
+                        'postgres://user@localhost:5432/mydb?sslmode=disable',
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
+                  maxLines: 3,
+                  keyboardType: TextInputType.url,
+                  validator: (String? v) {
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Paste a connection URL';
+                    }
+                    try {
+                      connectionProfileFromUrl(
+                        v,
+                        id: 'validate',
+                        createdAt: DateTime.now().toUtc(),
+                      );
+                    } on FormatException catch (e) {
+                      return e.message;
+                    }
+                    return null;
+                  },
+                  onChanged: (_) {
+                    if (_parseError != null) {
+                      setState(() => _parseError = null);
+                    }
+                  },
+                ),
+                if (_parseError != null) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Text(
+                    _parseError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _name,
+                  decoration: const InputDecoration(
+                    labelText: 'Display name (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Save connection'),
+                  value: _saveConnection,
+                  onChanged: (bool? v) =>
+                      setState(() => _saveConnection = v ?? true),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Remember password (OS keychain)'),
+                  subtitle: const Text(
+                    'Only if the URL includes a password',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  value: _rememberPassword,
+                  onChanged: (bool? v) =>
+                      setState(() => _rememberPassword = v ?? true),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _busy ? null : _connect,
+          child: _busy
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Connect'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _connect() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    setState(() => _busy = true);
+    final ConnectionProfile? parsed = _tryParseProfile();
+    if (parsed == null) {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+      return;
+    }
+    final ConnectionProfile profile = parsed;
+    try {
+      if (_saveConnection) {
+        await _ref.read(savedConnectionProfilesProvider.notifier).upsert(profile);
+      }
+      await _ref.read(liveConnectionsProvider.notifier).connect(profile);
+      if (!mounted) {
+        return;
+      }
+      final bool hasPassword =
+          profile.password != null && profile.password!.isNotEmpty;
+      if (_rememberPassword &&
+          _saveConnection &&
+          hasPassword &&
+          profile.type != DatabaseType.sqlite) {
+        final CredentialService cred =
+            await _ref.read(credentialServiceProvider.future);
+        await cred.storePassword(profile.id, profile.password!);
+      }
+      if (!mounted) {
+        return;
+      }
+      _ref.read(selectedConnectionIdProvider.notifier).select(profile.id);
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Connected to ${profile.name}')),
       );
     } catch (e) {
       if (!mounted) {
