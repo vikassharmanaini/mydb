@@ -43,6 +43,9 @@ class QueryWorkspace extends ConsumerStatefulWidget {
 }
 
 class _QueryWorkspaceState extends ConsumerState<QueryWorkspace> {
+  /// Max rows kept in memory and shown in the grid. Further server rows are
+  /// discarded (and the query is cancelled) so huge result sets cannot freeze
+  /// the UI or exhaust memory.
   static const int _kMaxDisplayRows = 500;
   static const Uuid _uuid = Uuid();
 
@@ -59,6 +62,7 @@ class _QueryWorkspaceState extends ConsumerState<QueryWorkspace> {
   int? _errorLine;
   List<ResultPage> _pages = <ResultPage>[];
   Duration? _lastDuration;
+  bool _resultsTruncated = false;
 
   @override
   void initState() {
@@ -241,6 +245,7 @@ class _QueryWorkspaceState extends ConsumerState<QueryWorkspace> {
       _errorLine = null;
       _pages = <ResultPage>[];
       _lastDuration = null;
+      _resultsTruncated = false;
     });
     try {
       if (forceUpdate || sqlPrefersExecuteUpdate(sql)) {
@@ -269,13 +274,45 @@ class _QueryWorkspaceState extends ConsumerState<QueryWorkspace> {
         return;
       }
       final List<ResultPage> collected = <ResultPage>[];
+      int rowsAccepted = 0;
+      bool truncated = false;
       await for (final ResultPage page in svc.executeQuery(sql)) {
-        collected.add(page);
+        if (!mounted) {
+          unawaited(svc.cancelCurrentQuery());
+          break;
+        }
+        final int remaining = _kMaxDisplayRows - rowsAccepted;
+        if (remaining <= 0) {
+          truncated = true;
+          break;
+        }
+        final ResultPage slicePage;
+        if (page.rows.isEmpty) {
+          slicePage = page;
+        } else if (page.rows.length <= remaining) {
+          slicePage = page;
+          rowsAccepted += page.rows.length;
+        } else {
+          slicePage = page.copyWith(
+            rows: page.rows.sublist(0, remaining),
+          );
+          rowsAccepted = _kMaxDisplayRows;
+          truncated = true;
+        }
+        collected.add(slicePage);
+        setState(() {
+          _pages = List<ResultPage>.from(collected);
+          _lastDuration = page.queryDuration;
+          _resultsTruncated = truncated;
+        });
+        if (truncated) {
+          break;
+        }
+      }
+      if (truncated) {
+        unawaited(svc.cancelCurrentQuery());
         if (mounted) {
-          setState(() {
-            _pages = List<ResultPage>.from(collected);
-            _lastDuration = page.queryDuration;
-          });
+          setState(() => _resultsTruncated = true);
         }
       }
     } catch (e, st) {
@@ -310,16 +347,49 @@ class _QueryWorkspaceState extends ConsumerState<QueryWorkspace> {
       _error = null;
       _errorLine = null;
       _pages = <ResultPage>[];
+      _resultsTruncated = false;
     });
     try {
       final List<ResultPage> collected = <ResultPage>[];
+      int rowsAccepted = 0;
+      bool truncated = false;
       await for (final ResultPage page in svc.executeQuery(explainSql)) {
-        collected.add(page);
+        if (!mounted) {
+          unawaited(svc.cancelCurrentQuery());
+          break;
+        }
+        final int remaining = _kMaxDisplayRows - rowsAccepted;
+        if (remaining <= 0) {
+          truncated = true;
+          break;
+        }
+        final ResultPage slicePage;
+        if (page.rows.isEmpty) {
+          slicePage = page;
+        } else if (page.rows.length <= remaining) {
+          slicePage = page;
+          rowsAccepted += page.rows.length;
+        } else {
+          slicePage = page.copyWith(
+            rows: page.rows.sublist(0, remaining),
+          );
+          rowsAccepted = _kMaxDisplayRows;
+          truncated = true;
+        }
+        collected.add(slicePage);
+        setState(() {
+          _pages = List<ResultPage>.from(collected);
+          _lastDuration = page.queryDuration;
+          _resultsTruncated = truncated;
+        });
+        if (truncated) {
+          break;
+        }
+      }
+      if (truncated) {
+        unawaited(svc.cancelCurrentQuery());
         if (mounted) {
-          setState(() {
-            _pages = List<ResultPage>.from(collected);
-            _lastDuration = page.queryDuration;
-          });
+          setState(() => _resultsTruncated = true);
         }
       }
     } catch (e, st) {
@@ -936,6 +1006,7 @@ class _QueryWorkspaceState extends ConsumerState<QueryWorkspace> {
                         error: _error,
                         lastDuration: _lastDuration,
                         maxRows: _kMaxDisplayRows,
+                        resultsTruncated: _resultsTruncated,
                         nullLabel: nullLabel,
                         onExport: _pages.isEmpty
                             ? null
@@ -981,6 +1052,7 @@ class _ResultPanel extends StatefulWidget {
     required this.error,
     required this.lastDuration,
     required this.maxRows,
+    required this.resultsTruncated,
     required this.nullLabel,
     this.onExport,
   });
@@ -989,6 +1061,7 @@ class _ResultPanel extends StatefulWidget {
   final String? error;
   final Duration? lastDuration;
   final int maxRows;
+  final bool resultsTruncated;
   final String nullLabel;
   final VoidCallback? onExport;
 
@@ -1000,6 +1073,16 @@ class _ResultPanelState extends State<_ResultPanel> {
   int? _sortColumnIndex;
   bool _sortAscending = true;
   static const double _cellWidth = 112;
+
+  final ScrollController _horizontalResults = ScrollController();
+  final ScrollController _verticalResults = ScrollController();
+
+  @override
+  void dispose() {
+    _horizontalResults.dispose();
+    _verticalResults.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1033,14 +1116,22 @@ class _ResultPanelState extends State<_ResultPanel> {
     }
 
     final List<String> columns = widget.pages.first.columns;
-    final List<List<dynamic>> rows = <List<dynamic>>[];
+    final List<List<dynamic>> slice = <List<dynamic>>[];
+    int need = widget.maxRows;
     for (final ResultPage p in widget.pages) {
-      rows.addAll(p.rows);
+      if (need <= 0) {
+        break;
+      }
+      if (p.rows.isEmpty) {
+        continue;
+      }
+      final int take = p.rows.length < need ? p.rows.length : need;
+      slice.addAll(p.rows.sublist(0, take));
+      need -= take;
     }
 
-    final int total = rows.length;
-    final int shown = total > widget.maxRows ? widget.maxRows : total;
-    final List<List<dynamic>> slice = rows.sublist(0, shown);
+    final int total = slice.length;
+    final int shown = total;
 
     final List<int> order = List<int>.generate(slice.length, (int i) => i);
     final int? sc = _sortColumnIndex;
@@ -1079,12 +1170,29 @@ class _ResultPanelState extends State<_ResultPanel> {
           child: Row(
             children: <Widget>[
               Expanded(
-                child: Text(
-                  '$total row${total == 1 ? '' : 's'}'
-                  '${total > widget.maxRows ? ' (showing first ${widget.maxRows})' : ''}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      widget.resultsTruncated
+                          ? '$total+ row${total == 1 ? '' : 's'} (fetch stopped at ${widget.maxRows} for performance)'
+                          : '$total row${total == 1 ? '' : 's'}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (widget.resultsTruncated)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          'Add LIMIT or narrow the query. Export includes only loaded rows.',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.tertiary,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
               if (widget.lastDuration != null)
@@ -1107,14 +1215,22 @@ class _ResultPanelState extends State<_ResultPanel> {
         ),
         Expanded(
           child: Scrollbar(
+            controller: _horizontalResults,
             thumbVisibility: true,
-            child: ListView(
+            child: SingleChildScrollView(
+              controller: _horizontalResults,
               primary: false,
-              children: <Widget>[
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
+              scrollDirection: Axis.horizontal,
+              child: Scrollbar(
+                controller: _verticalResults,
+                thumbVisibility: true,
+                child: SingleChildScrollView(
+                  controller: _verticalResults,
+                  primary: false,
+                  scrollDirection: Axis.vertical,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       Row(
                         children: <Widget>[
@@ -1149,74 +1265,65 @@ class _ResultPanelState extends State<_ResultPanel> {
                         ],
                       ),
                       const Divider(height: 1),
-                      SizedBox(
-                        height: (shown * 28.0).clamp(28, 4000),
-                        child: ListView.builder(
-                          primary: false,
-                          shrinkWrap: true,
-                          itemCount: shown,
-                          itemBuilder: (BuildContext c, int ii) {
-                            final int ri = order[ii];
-                            final List<dynamic> r = slice[ri];
-                            return Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                for (int ci = 0; ci < columns.length; ci++)
-                                  SizedBox(
-                                    width: _cellWidth,
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 4,
-                                        vertical: 2,
-                                      ),
-                                      child: SelectableText(
-                                        ci < r.length ? cellText(r[ci]) : '',
-                                        maxLines: 2,
-                                        style: TextStyle(
-                                          fontFamily: 'monospace',
-                                          fontSize: 11,
-                                          color: ci < r.length && r[ci] == null
-                                              ? theme.colorScheme.onSurfaceVariant
-                                              : null,
-                                          fontStyle: ci < r.length &&
-                                                  r[ci] == null
-                                              ? FontStyle.italic
-                                              : null,
-                                        ),
-                                      ),
+                      ...List.generate(shown, (int ii) {
+                        final int ri = order[ii];
+                        final List<dynamic> r = slice[ri];
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            for (int ci = 0; ci < columns.length; ci++)
+                              SizedBox(
+                                width: _cellWidth,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                    vertical: 2,
+                                  ),
+                                  child: SelectableText(
+                                    ci < r.length ? cellText(r[ci]) : '',
+                                    maxLines: 2,
+                                    style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontSize: 11,
+                                      color: ci < r.length && r[ci] == null
+                                          ? theme.colorScheme.onSurfaceVariant
+                                          : null,
+                                      fontStyle: ci < r.length && r[ci] == null
+                                          ? FontStyle.italic
+                                          : null,
                                     ),
                                   ),
-                                SizedBox(
-                                  width: 36,
-                                  child: PopupMenuButton<String>(
-                                    icon: const Icon(Icons.more_vert, size: 18),
-                                    onSelected: (String v) {
-                                      if (v == 'update') {
-                                        _showUpdateTemplate(
-                                          context,
-                                          columns,
-                                          r,
-                                        );
-                                      }
-                                    },
-                                    itemBuilder: (BuildContext ctx) =>
-                                        <PopupMenuEntry<String>>[
-                                      const PopupMenuItem<String>(
-                                        value: 'update',
-                                        child: Text('UPDATE template…'),
-                                      ),
-                                    ],
-                                  ),
                                 ),
-                              ],
-                            );
-                          },
-                        ),
-                      ),
+                              ),
+                            SizedBox(
+                              width: 36,
+                              child: PopupMenuButton<String>(
+                                icon: const Icon(Icons.more_vert, size: 18),
+                                onSelected: (String v) {
+                                  if (v == 'update') {
+                                    _showUpdateTemplate(
+                                      context,
+                                      columns,
+                                      r,
+                                    );
+                                  }
+                                },
+                                itemBuilder: (BuildContext ctx) =>
+                                    <PopupMenuEntry<String>>[
+                                  const PopupMenuItem<String>(
+                                    value: 'update',
+                                    child: Text('UPDATE template…'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
+                      }),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
